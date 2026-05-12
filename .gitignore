@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+env/
+
+# Model checkpoints and large binaries
+checkpoints/
+*.pt
+*.pth
+*.pkl
+*.bin
+*.npy
+
+# Raw datasets (too large for git)
+data/raw/
+mg_hgnn/data/raw/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+texput.log
+compile.log
+
+# Logs
+logs/
+*.log
+
+# Temp XGBoost subprocess files
+/tmp/xgb_*.npy
