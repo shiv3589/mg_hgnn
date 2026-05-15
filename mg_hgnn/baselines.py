@@ -541,14 +541,40 @@ class HGTBaseline:
         self._heads:  Optional[_PredHeads]           = None
 
     def _get_bert_cache(self, data: HeteroData) -> Dict[str, torch.Tensor]:
-        """Load pre-computed BERT embeddings; fall back to batched inference."""
+        """Load pre-computed BERT embeddings; use broadcast or batched fallback."""
         try:
             raw = torch.load(_BERT_CACHE_PATH, weights_only=True)
-            return {k: v.detach() for k, v in raw.items()}
+            # Validate shapes match current dataset before accepting
+            if all(
+                ntype in raw and raw[ntype].shape[0] == data[ntype].num_nodes
+                for ntype in ("student", "course", "resource")
+                if ntype in data.node_types
+            ):
+                return {k: v.detach() for k, v in raw.items()}
         except FileNotFoundError:
             pass
+
+        # Detect text-free datasets: all nodes have [CLS]-only stubs
+        # (input_ids[:,0]==101, rest zero; mask[:,0]==1, rest zero).
+        # One BERT call is sufficient — broadcast to every node type.
+        ids  = data["student"].input_ids
+        mask = data["student"].attention_mask
+        is_cls_only = (
+            (ids[:, 0] == 101).all()
+            and (ids[:, 1:] == 0).all()
+            and (mask[:, 0] == 1).all()
+            and (mask[:, 1:] == 0).all()
+        )
+        if is_cls_only:
+            with torch.no_grad():
+                emb = self._model.text_enc(ids[:1], mask[:1])  # (1, d)
+            return {
+                ntype: emb.expand(data[ntype].num_nodes, -1).clone()
+                for ntype in ("student", "course", "resource")
+                if ntype in data.node_types
+            }
+
         # Batched fallback (256 rows at a time to avoid OOM)
-        self._model.text_enc.bert.eval()
         result: Dict[str, torch.Tensor] = {}
         for ntype in ("student", "course", "resource"):
             ids  = data[ntype].input_ids
