@@ -1,0 +1,28 @@
+Loading OULAD tables...
+  Students:  28,785
+  Structured: 56 raw features → padded to 64
+  Building behavioral sequences (~30 s for 10 M rows)...
+  Behavioral tensor: (28785, 50, 32)
+  Courses:   22
+  Resources: 6,364
+[cap] enrolled_in: 32593 -> 2000
+  [XGBoost] fitting...
+  [XGBoost] RMSE=1.2552  AUC=0.7503  F1=0.4371
+  [GAT] fitting...
+  [GAT] RMSE=1.6495  AUC=0.8831  F1=0.2737
+  [HGT] fitting...
+2026-05-11 13:17:14.236532: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+  [HGT] RMSE=2.1266  AUC=0.7965  F1=0.2261
+  [HAN] fitting...
+  [HAN] RMSE=1.9859  AUC=0.5730  F1=0.1895
+
+======================================================
+  Model               RMSE    AUC-ROC     Eng-F1
+======================================================
+  XGBoost           1.2552     0.7503     0.4371
+  GAT               1.6495     0.8831     0.2737
+  HGT               2.1266     0.7965     0.2261
+  HAN               1.9859     0.5730     0.1895
+======================================================
+

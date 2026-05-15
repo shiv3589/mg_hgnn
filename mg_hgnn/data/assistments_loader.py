@@ -65,7 +65,17 @@ class ASSISTmentsLoader:
         print(f'Loading ASSISTments {self.version}...')
         df = pd.read_csv(self.raw, encoding='latin1', low_memory=False)
 
-        # ── 1. Clean ──────────────────────────────────────────────────
+        # ── 1. Normalise schema ───────────────────────────────────────
+        # 2015 dataset has only 4 cols: user_id, log_id, sequence_id, correct.
+        # Map sequence_id → problem_id and skill_name so the rest of the
+        # pipeline is version-agnostic.
+        if 'problem_id' not in df.columns:
+            # 2015: use sequence_id (100 skill builders) as problem proxy
+            df['problem_id'] = df['sequence_id']
+        if 'skill_name' not in df.columns:
+            df['skill_name'] = df['sequence_id'].astype(str)
+
+        # ── 1b. Clean ─────────────────────────────────────────────────
         df = df.dropna(subset=['user_id', 'correct', 'problem_id'])
         df['correct']    = pd.to_numeric(df['correct'],    errors='coerce')
         df['user_id']    = pd.to_numeric(df['user_id'],    errors='coerce')
@@ -87,9 +97,7 @@ class ASSISTmentsLoader:
         else:
             df['hint_count'] = 0
 
-        df['skill_name'] = (df['skill_name'].fillna('unknown')
-                            if 'skill_name' in df.columns
-                            else 'unknown')
+        df['skill_name'] = df['skill_name'].fillna('unknown')
 
         print(f'  Raw rows after cleaning: {len(df):,}')
 

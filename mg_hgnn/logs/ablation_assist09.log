@@ -1,0 +1,88 @@
+2026-05-15 11:06:21.961776: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+Loading ASSISTments 2009...
+ASSISTments 2009: found ✓
+Loading ASSISTments 2009...
+  Raw rows after cleaning: 346,860
+  Students:  4,217
+  Skills (courses): 102
+  Problems (resources): 26,688
+  Structured: 5 features → padded to 64
+  Building behavioral sequences...
+  Behavioral tensor: (4217, 50, 32)
+  enrolled_in:       37,249 edges
+  submitted_to:      37,249 edges
+  accessed:          113,946 edges
+  collaborated_with: 30,000 edges
+  [graph cap] accessed edges → 100,000
+  [text-free] broadcast cache built
+  [FIX 3] torch-sparse/pyg-lib not found — using full-graph loader (install torch-sparse for NeighborLoader speedup)
+
+==========================================================
+  Variant: MG-HGNN (full)
+==========================================================
+  Fold 1: AUC=0.8644  RMSE=0.3395  F1=0.7041
+  Fold 2: AUC=0.8728  RMSE=0.2799  F1=0.7013
+  Fold 3: AUC=0.8817  RMSE=0.3296  F1=0.7241
+  Fold 4: AUC=0.8781  RMSE=0.2744  F1=0.6264
+  Fold 5: AUC=0.8620  RMSE=0.3405  F1=0.6557
+
+  MG-HGNN (full): AUC = 0.8718 ± 0.0076  (0.5 min)
+
+==========================================================
+  Variant: Uniform gate
+==========================================================
+  Fold 1: AUC=0.8979  RMSE=0.3495  F1=0.6767
+  Fold 2: AUC=0.8765  RMSE=0.3075  F1=0.6722
+  Fold 3: AUC=0.8850  RMSE=0.3408  F1=0.7120
+  Fold 4: AUC=0.9052  RMSE=0.4990  F1=0.7284
+  Fold 5: AUC=0.8677  RMSE=0.3442  F1=0.7036
+
+  Uniform gate: AUC = 0.8865 ± 0.0137  (0.5 min)
+
+==========================================================
+  Variant: Shared gate
+==========================================================
+  Fold 1: AUC=0.8870  RMSE=0.3485  F1=0.6858
+  Fold 2: AUC=0.8346  RMSE=0.3406  F1=0.6324
+  Fold 3: AUC=0.8924  RMSE=0.3039  F1=0.7147
+  Fold 4: AUC=0.9071  RMSE=0.5780  F1=0.3481
+  Fold 5: AUC=0.8574  RMSE=0.5020  F1=0.7144
+
+  Shared gate: AUC = 0.8757 ± 0.0261  (0.6 min)
+
+==========================================================
+  Variant: Struct only
+==========================================================
+  Fold 1: AUC=0.8734  RMSE=0.3364  F1=0.7290
+  Fold 2: AUC=0.8922  RMSE=0.6027  F1=0.6860
+  Fold 3: AUC=0.8651  RMSE=0.3255  F1=0.6928
+  Fold 4: AUC=0.8514  RMSE=0.6500  F1=0.6735
+  Fold 5: AUC=0.8008  RMSE=0.4171  F1=0.7227
+
+  Struct only: AUC = 0.8566 ± 0.0309  (0.5 min)
+
+==========================================================
+  Variant: Behavioral only
+==========================================================
+  Fold 1: AUC=0.8848  RMSE=0.3527  F1=0.6972
+  Fold 2: AUC=0.8960  RMSE=0.4868  F1=0.5906
+  Fold 3: AUC=0.8854  RMSE=0.2771  F1=0.6251
+  Fold 4: AUC=0.8807  RMSE=0.2579  F1=0.6443
+  Fold 5: AUC=0.8569  RMSE=0.2696  F1=0.6721
+
+  Behavioral only: AUC = 0.8807 ± 0.0130  (0.5 min)
+
+==========================================================
+  ABLATION TABLE  (5-fold, 50 epochs each)
+==========================================================
+  Variant                           AUC       ±      RMSE       F1
+  ----------------------------------------------------------
+  MG-HGNN (full)                 0.8718  0.0076    0.3128   0.6823  ←
+  Uniform gate                   0.8865  0.0137    0.3682   0.6986
+  Shared gate                    0.8757  0.0261    0.4146   0.6191
+  Struct only                    0.8566  0.0309    0.4663   0.7008
+  Behavioral only                0.8807  0.0130    0.3288   0.6459
+==========================================================
+
+Saved → results/ablation_results_assistments09.json

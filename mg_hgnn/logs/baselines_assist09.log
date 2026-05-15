@@ -1,0 +1,133 @@
+Loading ASSISTments 2009...
+ASSISTments 2009: found ✓
+Loading ASSISTments 2009...
+  Raw rows after cleaning: 346,860
+  Students:  4,217
+  Skills (courses): 102
+  Problems (resources): 26,688
+  Structured: 5 features → padded to 64
+  Building behavioral sequences...
+  Behavioral tensor: (4217, 50, 32)
+  enrolled_in:       37,249 edges
+  submitted_to:      37,249 edges
+  accessed:          113,946 edges
+  collaborated_with: 30,000 edges
+
+=== Fold 1/5 ===
+[cap] enrolled_in: 37249 -> 2000
+  [XGBoost] fitting...
+  [XGBoost] RMSE=0.2615  AUC=0.5052  F1=0.3730
+  [GAT] fitting...
+  [GAT] RMSE=0.3584  AUC=0.2392  F1=0.1770
+  [HGT] fitting...
+2026-05-15 10:38:23.247666: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+  [HGT] RMSE=0.3503  AUC=0.8210  F1=0.1709
+  [HAN] fitting...
+  [HAN] RMSE=0.5113  AUC=0.8190  F1=0.3511
+
+======================================================
+  Model               RMSE    AUC-ROC     Eng-F1
+======================================================
+  XGBoost           0.2615     0.5052     0.3730
+  GAT               0.3584     0.2392     0.1770
+  HGT               0.3503     0.8210     0.1709
+  HAN               0.5113     0.8190     0.3511
+======================================================
+
+
+=== Fold 2/5 ===
+[cap] enrolled_in: 2000 -> 2000
+  [XGBoost] fitting...
+  [XGBoost] RMSE=0.2667  AUC=0.5268  F1=0.3486
+  [GAT] fitting...
+  [GAT] RMSE=0.3130  AUC=0.7045  F1=0.1607
+  [HGT] fitting...
+  [HGT] RMSE=0.3752  AUC=0.8844  F1=0.4718
+  [HAN] fitting...
+  [HAN] RMSE=0.4519  AUC=0.7911  F1=0.4210
+
+======================================================
+  Model               RMSE    AUC-ROC     Eng-F1
+======================================================
+  XGBoost           0.2667     0.5268     0.3486
+  GAT               0.3130     0.7045     0.1607
+  HGT               0.3752     0.8844     0.4718
+  HAN               0.4519     0.7911     0.4210
+======================================================
+
+
+=== Fold 3/5 ===
+[cap] enrolled_in: 2000 -> 2000
+  [XGBoost] fitting...
+  [XGBoost] RMSE=0.2571  AUC=0.5306  F1=0.3538
+  [GAT] fitting...
+  [GAT] RMSE=0.2566  AUC=0.1415  F1=0.1635
+  [HGT] fitting...
+  [HGT] RMSE=0.3150  AUC=0.8543  F1=0.4335
+  [HAN] fitting...
+  [HAN] RMSE=0.4300  AUC=0.7854  F1=0.4360
+
+======================================================
+  Model               RMSE    AUC-ROC     Eng-F1
+======================================================
+  XGBoost           0.2571     0.5306     0.3538
+  GAT               0.2566     0.1415     0.1635
+  HGT               0.3150     0.8543     0.4335
+  HAN               0.4300     0.7854     0.4360
+======================================================
+
+
+=== Fold 4/5 ===
+[cap] enrolled_in: 2000 -> 2000
+  [XGBoost] fitting...
+  [XGBoost] RMSE=0.2590  AUC=0.5023  F1=0.3550
+  [GAT] fitting...
+  [GAT] RMSE=0.2493  AUC=0.8296  F1=0.1667
+  [HGT] fitting...
+  [HGT] RMSE=0.3637  AUC=0.8680  F1=0.3954
+  [HAN] fitting...
+  [HAN] RMSE=0.4769  AUC=0.7772  F1=0.2918
+
+======================================================
+  Model               RMSE    AUC-ROC     Eng-F1
+======================================================
+  XGBoost           0.2590     0.5023     0.3550
+  GAT               0.2493     0.8296     0.1667
+  HGT               0.3637     0.8680     0.3954
+  HAN               0.4769     0.7772     0.2918
+======================================================
+
+
+=== Fold 5/5 ===
+[cap] enrolled_in: 2000 -> 2000
+  [XGBoost] fitting...
+  [XGBoost] RMSE=0.2607  AUC=0.5201  F1=0.3691
+  [GAT] fitting...
+  [GAT] RMSE=0.2720  AUC=0.8549  F1=0.1644
+  [HGT] fitting...
+  [HGT] RMSE=0.3644  AUC=0.8626  F1=0.3688
+  [HAN] fitting...
+  [HAN] RMSE=0.5294  AUC=0.7573  F1=0.4110
+
+======================================================
+  Model               RMSE    AUC-ROC     Eng-F1
+======================================================
+  XGBoost           0.2607     0.5201     0.3691
+  GAT               0.2720     0.8549     0.1644
+  HGT               0.3644     0.8626     0.3688
+  HAN               0.5294     0.7573     0.4110
+======================================================
+
+
+============================================================
+  Baseline Summary — ASSISTMENTS09  (5-fold CV)
+============================================================
+  Model                 AUC       ±      RMSE        F1
+  ------------------------------------------------------------
+  GAT                0.5540  0.3028    0.2898    0.1665
+  HGT                0.8581  0.0210    0.3537    0.3681
+  HAN                0.7860  0.0201    0.4799    0.3822
+============================================================
+
+Saved → results/baseline_results_assistments09.json
