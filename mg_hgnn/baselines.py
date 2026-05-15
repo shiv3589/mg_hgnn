@@ -835,3 +835,90 @@ def run_all_baselines(
     print(f"{'='*W}\n")
 
     return results
+
+
+def main() -> None:
+    import argparse
+    import json
+    from pathlib import Path
+    from sklearn.model_selection import StratifiedKFold
+
+    parser = argparse.ArgumentParser(description="Baseline comparison for MG-HGNN")
+    parser.add_argument("--dataset",
+                        choices=["oulad", "assistments09", "assistments15"],
+                        default="oulad")
+    args = parser.parse_args()
+
+    cfg = Config()
+
+    if args.dataset == "oulad":
+        from data.oulad_loader import OULADLoader
+        print("Loading OULAD...")
+        data_loader = OULADLoader(cfg)
+        data, meta  = data_loader.load()
+        raw_dir     = "data/raw/oulad"
+        skip_xgb    = False
+    else:
+        from data.assistments_loader import ASSISTmentsLoader
+        ver = "2009" if args.dataset == "assistments09" else "2015"
+        print(f"Loading ASSISTments {ver}...")
+        data_loader = ASSISTmentsLoader(cfg, version=ver)
+        if not data_loader.check_files():
+            return
+        data, meta = data_loader.load()
+        raw_dir    = None
+        skip_xgb   = True   # XGBoost uses OULAD-specific CSV features
+
+    data["student"].y_grade      = meta["grade"].float()
+    data["student"].y_dropout    = meta["dropout"].float()
+    data["student"].y_engagement = meta["engagement"].long()
+
+    n_students    = len(meta["student_ids"])
+    dropout_labels = meta["dropout"].numpy()
+    skf   = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    folds = list(skf.split(np.arange(n_students), dropout_labels))
+
+    all_results: Dict[str, Dict] = {}
+    Path("results").mkdir(exist_ok=True)
+
+    for fold_k, (train_idx, val_idx) in enumerate(folds):
+        print(f"\n=== Fold {fold_k + 1}/5 ===")
+        fold_res = run_all_baselines(
+            data, train_idx, val_idx, cfg=cfg,
+            raw_dir=raw_dir if raw_dir else "data/raw/oulad",
+        )
+        for model_name, metrics in fold_res.items():
+            if skip_xgb and model_name == "XGBoost":
+                continue
+            if model_name not in all_results:
+                all_results[model_name] = {"rmse": [], "auc": [], "f1": []}
+            all_results[model_name]["rmse"].append(metrics["rmse"])
+            all_results[model_name]["auc"].append(metrics["auc"])
+            all_results[model_name]["f1"].append(metrics["f1"])
+
+    summary: Dict[str, Dict] = {}
+    W = 60
+    print(f"\n{'='*W}")
+    print(f"  Baseline Summary — {args.dataset.upper()}  (5-fold CV)")
+    print(f"{'='*W}")
+    print(f"  {'Model':<16} {'AUC':>8}  {'±':>6}  {'RMSE':>8}  {'F1':>8}")
+    print(f"  {'-'*W}")
+    for name, vals in all_results.items():
+        auc_m  = float(np.mean(vals["auc"]))
+        auc_s  = float(np.std(vals["auc"]))
+        rmse_m = float(np.mean(vals["rmse"]))
+        f1_m   = float(np.mean(vals["f1"]))
+        summary[name] = {"auc_mean": auc_m, "auc_std": auc_s,
+                         "rmse_mean": rmse_m, "f1_mean": f1_m}
+        print(f"  {name:<16} {auc_m:>8.4f}  {auc_s:>6.4f}  "
+              f"{rmse_m:>8.4f}  {f1_m:>8.4f}")
+    print(f"{'='*W}")
+
+    out_path = Path("results") / f"baseline_results_{args.dataset}.json"
+    with open(out_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"\nSaved → {out_path}")
+
+
+if __name__ == "__main__":
+    main()

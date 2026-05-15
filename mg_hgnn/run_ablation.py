@@ -4,6 +4,7 @@ Runs 5 variants × 5 folds × 50 epochs each (~45 min on CPU).
 Results saved to results/ablation_results.json.
 """
 
+import argparse
 import json
 import time
 from pathlib import Path
@@ -16,7 +17,6 @@ from sklearn.utils.class_weight import compute_class_weight
 from torch.optim import Adam
 
 from config import Config
-from data.oulad_loader import OULADLoader
 from models.mg_hgnn import (
     MG_HGNN,
     MG_HGNN_UniformGate,
@@ -148,10 +148,27 @@ def run_variant(name, ModelClass, data, meta, bert_cache, cfg, loader):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Ablation study for MG-HGNN")
+    parser.add_argument("--dataset",
+                        choices=["oulad", "assistments09", "assistments15"],
+                        default="oulad")
+    args = parser.parse_args()
+
     cfg = Config()
 
-    print("Loading OULAD...")
-    data, meta = OULADLoader(cfg).load()
+    if args.dataset == "oulad":
+        from data.oulad_loader import OULADLoader
+        print("Loading OULAD...")
+        data_loader = OULADLoader(cfg)
+        data, meta  = data_loader.load()
+    elif args.dataset in ("assistments09", "assistments15"):
+        from data.assistments_loader import ASSISTmentsLoader
+        ver = "2009" if args.dataset == "assistments09" else "2015"
+        print(f"Loading ASSISTments {ver}...")
+        data_loader = ASSISTmentsLoader(cfg, version=ver)
+        if not data_loader.check_files():
+            return
+        data, meta = data_loader.load()
 
     # Attach labels
     data["student"].y_grade      = meta["grade"].float()
@@ -168,9 +185,12 @@ def main():
             data[_etype].edge_index = ei[:, perm]
             print(f"  [graph cap] accessed edges → {MAX_ACCESSED:,}")
 
-    cache_path = Path("data/bert_cache_oulad.pt")
-    print(f"Loading BERT cache from {cache_path}...")
-    bert_cache = torch.load(str(cache_path), weights_only=True)
+    if args.dataset == "oulad":
+        cache_path = Path("data/bert_cache_oulad.pt")
+        print(f"Loading BERT cache from {cache_path}...")
+        bert_cache = torch.load(str(cache_path), weights_only=True)
+    else:
+        bert_cache = None
 
     # Build loader once — shared across all variants and folds
     loader = build_encode_loader(data, cfg)
@@ -183,7 +203,8 @@ def main():
             name, ModelClass, data, meta, bert_cache, cfg, loader
         )
         # Save incrementally so a crash doesn't lose earlier variants
-        with open("results/ablation_results.json", "w") as f:
+        out_path = f"results/ablation_results_{args.dataset}.json"
+        with open(out_path, "w") as f:
             json.dump(all_results, f, indent=2)
 
     # Final table
@@ -200,7 +221,7 @@ def main():
               f"{r['rmse_mean']:>8.4f}  "
               f"{r['f1_mean']:>7.4f}{marker}")
     print(f"{'='*W}")
-    print(f"\nSaved → results/ablation_results.json")
+    print(f"\nSaved → {out_path}")
 
 
 if __name__ == "__main__":

@@ -518,7 +518,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train MG-HGNN (fast 3-fix)")
     parser.add_argument("--debug",    action="store_true",
                         help="1 fold, 5 epochs (synthetic: 100 students)")
-    parser.add_argument("--dataset",  choices=["synthetic", "oulad", "moocc"],
+    parser.add_argument("--dataset",
+                        choices=["synthetic", "oulad", "moocc",
+                                 "assistments09", "assistments15"],
                         default="synthetic")
     parser.add_argument("--use-cache", action="store_true",
                         help="Load pre-computed BERT embeddings from "
@@ -540,6 +542,14 @@ def main() -> None:
         from data.moocc_loader import MOOCCubeLoader
         data_loader = MOOCCubeLoader(cfg)
         data, meta  = data_loader.load()
+        data_loader.summary(data, meta)
+    elif args.dataset in ("assistments09", "assistments15"):
+        from data.assistments_loader import ASSISTmentsLoader
+        ver = "2009" if args.dataset == "assistments09" else "2015"
+        data_loader = ASSISTmentsLoader(cfg, version=ver)
+        if not data_loader.check_files():
+            return
+        data, meta = data_loader.load()
         data_loader.summary(data, meta)
     else:
         n_students = 100 if args.debug else 200
