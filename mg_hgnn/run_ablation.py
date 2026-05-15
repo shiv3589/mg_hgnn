@@ -190,7 +190,19 @@ def main():
         print(f"Loading BERT cache from {cache_path}...")
         bert_cache = torch.load(str(cache_path), weights_only=True)
     else:
-        bert_cache = None
+        # ASSISTments: no text — broadcast a single [CLS] embedding to all nodes
+        from models.encoders import TextEncoder
+        _tenc = TextEncoder(cfg, freeze_bert=True)
+        _tenc.eval()
+        with torch.no_grad():
+            _emb = _tenc(data["student"].input_ids[:1],
+                         data["student"].attention_mask[:1])
+        bert_cache = {
+            ntype: _emb.expand(data[ntype].num_nodes, -1).clone()
+            for ntype in ("student", "course", "resource")
+            if ntype in data.node_types
+        }
+        print(f"  [text-free] broadcast cache built")
 
     # Build loader once — shared across all variants and folds
     loader = build_encode_loader(data, cfg)

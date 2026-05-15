@@ -557,7 +557,26 @@ def main() -> None:
         data, meta = make_synthetic_data(cfg, n_students=n_students)
 
     bert_cache: Optional[Dict] = None
-    if args.use_cache:
+    if args.dataset in ("assistments09", "assistments15"):
+        # ASSISTments has no text — all nodes carry identical [CLS]-only stubs.
+        # Run BERT once on a single [CLS] sequence and broadcast to every node
+        # type, bypassing per-node BERT calls (~30 min → <1 s).
+        print("  [text-free] building broadcast BERT cache from single [CLS] pass…")
+        from models.encoders import TextEncoder
+        _tenc = TextEncoder(cfg, freeze_bert=True)
+        _tenc.eval()
+        with torch.no_grad():
+            _ids  = data["student"].input_ids[:1]
+            _mask = data["student"].attention_mask[:1]
+            _emb  = _tenc(_ids, _mask)   # (1, embed_dim)
+        bert_cache = {}
+        for ntype in ("student", "course", "resource"):
+            if ntype in data.node_types:
+                n = data[ntype].num_nodes
+                bert_cache[ntype] = _emb.expand(n, -1).clone()
+        print(f"  [text-free] cache built — "
+              f"{', '.join(f'{k}: {v.shape[0]}' for k, v in bert_cache.items())}")
+    elif args.use_cache:
         from data.cache_embeddings import cache_bert_embeddings, load_bert_cache
         cache_path = Path(f"data/bert_cache_{args.dataset}.pt")
         if cache_path.exists():
