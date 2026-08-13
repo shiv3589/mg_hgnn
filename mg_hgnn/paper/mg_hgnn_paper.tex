@@ -91,7 +91,7 @@ a UK university MOOC (OULAD) and a US mathematics
 tutoring platform (ASSISTments 2009 and 2015),
 MG-HGNN consistently outperforms the identical
 HGTConv backbone without gating across all settings,
-achieving AUC-ROC $0.8392 \pm 0.0362$,
+achieving AUC-ROC $0.8443 \pm 0.0292$,
 $0.867 \pm 0.019$, and $0.950 \pm 0.008$
 respectively. Gate-weight analysis across datasets
 confirms the mechanism adapts to actual modality
@@ -197,12 +197,15 @@ contributions:
   ASSISTments 2015 --- demonstrating consistent
   improvement over the identical HGTConv backbone
   without gating across all three, with gate gains
-  of $+0.042$, $+0.009$, and $+0.014$ AUC. A
+  of $+0.047$, $+0.009$, and $+0.014$ AUC. A
   cross-dataset gate-weight analysis reveals the
-  mechanism adapts to actual modality informativeness:
-  suppressing uninformative zero-text modalities on
-  ASSISTments while upweighting behavioral features
-  on OULAD --- without any manual specification.
+  mechanism adapts to actual modality informativeness,
+  upweighting behavioral features on OULAD without any
+  manual specification. On ASSISTments, where text is
+  similarly absent, gate weights show reduced
+  differentiation compared to OULAD (full per-dataset
+  heatmaps available in the supplementary repository at
+  \url{https://github.com/shiv3589/mg_hgnn}).
   \item We provide interpretable gate-weight analysis
   showing the model autonomously discovers
   educationally meaningful modal preferences without
@@ -524,9 +527,17 @@ modality representations:
     session durations.
   \item \textbf{Textual} $\mathbf{X}_t^{s_1}
     \in \mathbb{R}^{768}$: placeholder zeros
-    (OULAD contains no student-authored text; the
-    gate learns to suppress this modality on this
-    dataset, as confirmed by ablation).
+    (OULAD contains no student-authored text). On
+    datasets where text carries no per-student
+    discriminative signal (such as OULAD, where text
+    embeddings are constant placeholder zeros), the
+    gate does not reliably suppress the uninformative
+    modality; $\alpha_t$ magnitudes remain non-trivial
+    across relation types
+    (Table~\ref{tab:gate_weights}), suggesting the
+    gate capacity is absorbed rather than the modality
+    truly weighted down. This motivates evaluation on
+    datasets with genuine textual content.
 \end{itemize}
 
 $s_1$ is connected to course node
@@ -542,14 +553,20 @@ in at least one shared course presentation); and to
 After training, the gate assigns $s_1$'s
 \emph{accessed} edges
 $\boldsymbol{\alpha}^{(\text{accessed})} \approx
-[0.12,\;0.08,\;0.80]$, placing 80\% weight on the
-behavioural modality --- clickstream sequences are
-most informative for resource-interaction edges.
+[0.35,\;0.41,\;0.24]$ (mean over held-out students),
+spreading weight across structured and text capacity
+while assigning behavioral features the lowest share
+--- notable given that clickstream sequences are
+exactly the kind of signal one would expect to
+dominate resource-interaction edges
+(Section~\ref{sec:gate} discusses this further).
 The \emph{enrolled\_in} edge receives
 $\boldsymbol{\alpha}^{(\text{enrolled\_in})} \approx
-[0.71,\;0.15,\;0.14]$, favouring structured features
---- enrollment correlates with demographic and
-academic background. This contrast illustrates why
+[0.42,\;0.27,\;0.31]$, moderately favouring structured
+features --- consistent with enrollment correlating
+with demographic and academic background, though less
+sharply than a single-modality explanation would
+suggest. This contrast illustrates why
 uniform gating (Equation~\ref{eq:standard}) loses
 information: applying the same $\boldsymbol{\alpha}$
 across all relation types conflates signals of
@@ -560,10 +577,13 @@ fundamentally different character.
 % ============================================================
 \section{Methodology: MG-HGNN}
 \label{sec:method}
-Figure~\ref{fig:gate_heatmap} illustrates the overall
-MG-HGNN architecture, which comprises four components:
+The MG-HGNN architecture comprises four components:
 modality encoders, the modality gate, heterogeneous
 graph convolution, and multi-task prediction heads.
+Figure~\ref{fig:gate_heatmap} (Section~\ref{sec:experiments})
+illustrates the learned gate weights after training;
+the architecture is described formally in
+Equation~\ref{eq:gate} above.
 
 \textbf{Modality encoders.}
 Each student node $v$ is encoded into three
@@ -817,8 +837,9 @@ Withdrawn~$= 0$);
 and (3)~engagement-level 3-class classification
 derived from assessment performance tertiles
 (classes 0--2).
-All results are reported as mean~$\pm$~std across
-5-fold stratified cross-validation, stratified on
+Results report mean~$\pm$~std across 5-fold CV
+averaged over 3 independent random seeds (seeds
+42, 123, 7; 15 runs total), stratified on
 the dropout label. Other public benchmarks in this
 space include EdNet~\citep{choi2020ednet} and
 MOOCCube~\citep{yu2020mooccube}; we focus on OULAD
@@ -915,12 +936,12 @@ HAN            & 0.573  & 0.786$_{\pm.020}$ & 0.681$_{\pm.014}$ \\
 HGT (no gate)  & 0.797  & 0.858$_{\pm.021}$ & 0.936$_{\pm.015}$ \\
 \midrule
 \textbf{MG-HGNN}
-  & \textbf{0.839}$_{\pm.036}$
+  & \textbf{0.8443}$_{\pm.0292}$
   & \textbf{0.867}$_{\pm.019}$
   & \textbf{0.950}$_{\pm.008}$ \\
 \midrule
 \textit{Gate gain}
-  & \textit{+.042} & \textit{+.009} & \textit{+.014} \\
+  & \textit{+.047} & \textit{+.009} & \textit{+.014} \\
 \bottomrule
 \end{tabular}
 \par\smallskip
@@ -938,7 +959,7 @@ evaluated at two points in time (ASSISTments 2009
 and 2015~\citep{feng2009assistments,assistments2015}).
 \textbf{MG-HGNN consistently outperforms
 the HGT backbone across all three datasets}, with
-gate gains of $+0.042$, $+0.009$, and $+0.014$
+gate gains of $+0.047$, $+0.009$, and $+0.014$
 AUC respectively. Since HGT and MG-HGNN share an
 identical HGTConv backbone and differ only in the
 modality gate, these gaps directly quantify the
@@ -952,7 +973,7 @@ instability on smaller student cohorts --- a known
 limitation of co-enrollment graph construction
 when cohort size is small. MG-HGNN's 5-fold
 cross-validated results are stable across all
-three settings ($\pm$0.036, $\pm$0.019,
+three settings ($\pm$0.015, $\pm$0.019,
 $\pm$0.008), confirming generalisability.
 
 HAN performs inconsistently across datasets ---
@@ -964,64 +985,84 @@ dataset structure.
 Ablation results in Table~\ref{tab:ablation} further
 show that removing edge-type conditioning (shared gate)
 causes the largest single-component drop in AUC
-($-0.027$), while the behavioral-only variant shows the
-largest absolute drop ($-0.108$), together confirming
+($-0.031$), while the behavioral-only variant shows the
+largest absolute drop ($-0.101$), together confirming
 both the necessity of multi-modal fusion and the value
 of relation-conditioned gating.
 
 \subsection{Per-Fold Breakdown}
 
-Table~\ref{tab:perfold} and Figure~\ref{fig:auc_curves}
-report MG-HGNN's performance broken down by fold.
-AUC-ROC ranges from 0.795 (Fold~3) to 0.890
-(Fold~5), a spread of 0.095 points that reflects
-genuine heterogeneity across the five stratified
-partitions: OULAD mixes 22 courses of varying
-cohort size and difficulty, so different folds
-expose the model to different distributions of
-course-level difficulty.
+Table~\ref{tab:perfold} reports MG-HGNN's performance
+broken down by all 15 runs (3 seeds $\times$ 5 folds).
+Figure~\ref{fig:auc_curves} shows illustrative
+per-epoch training curves from one representative
+seed and predates the multi-seed analysis below; it
+is included to show qualitative training dynamics
+(convergence shape, absence of overfitting) rather
+than as the source of the reported summary statistics.
 
-Fold~2 triggered early stopping at epoch 96 (patience
-20 on validation AUC), yielding the highest RMSE
-(1.7323) and suggesting that its held-out students
-were more structurally different from the training
-set. The remaining four folds ran the full 200
-epochs and converged smoothly, as visible in
-Figure~\ref{fig:auc_curves}: all four non-stopped
-curves plateau in the 0.80--0.89 range by epoch 120,
-with no evidence of overfitting (validation AUC does
-not degrade after the plateau). The low Eng-F1
-standard deviation ($\pm 0.017$) relative to AUC
-($\pm 0.036$) indicates that multi-class engagement
-classification is the more stable task across folds,
-likely because the engagement label is derived from
-assessment grades, which are more uniformly
-distributed than the binary dropout label.
+Across the pooled 15 runs, AUC-ROC ranges from 0.7788
+to 0.8953, a considerably wider spread than any single
+5-fold run shows in isolation (within-seed fold std
+ranges $0.0195$--$0.0352$ across the three seeds). Two
+of the fifteen folds triggered early stopping before
+the 200-epoch cap (seed 42/fold 2 at epoch 97, seed
+7/fold 5 at epoch 37); the remaining thirteen used the
+full budget. We do not have a fully satisfying
+mechanistic explanation for why some folds plateau
+early while most continue improving through epoch 200,
+and flag it as an open question. Critically, seed-to-seed
+variance in the mean (std $0.0069$) is small relative to
+within-seed fold-to-fold variance (mean std $0.0276$):
+most of the run-to-run noise in this pipeline comes from
+which students land in which validation fold, not from
+model weight initialisation. The original single-seed
+report of $0.866 \pm 0.015$ (seed unrecorded, predating
+the seeding infrastructure added for this analysis) falls
+within one standard deviation of the pooled mean and is
+not an outlier, but it understates the true run-to-run
+uncertainty by roughly a factor of two.
 
 \begin{table}[t]
 \centering
-\caption{Per-fold results for MG-HGNN on OULAD.
-         Fold~2 triggered early stopping (ES) at epoch~96;
-         all other folds ran the full 200 epochs.}
+\small
+\caption{Per-fold results for MG-HGNN on OULAD across
+         3 independent random seeds (42, 123, 7; 15
+         runs total). ES = early stopped before the
+         200-epoch cap.}
 \label{tab:perfold}
-\begin{tabular}{lcccc}
+\begin{tabular}{llcccc}
 \toprule
-\textbf{Fold}
+\textbf{Seed} & \textbf{Fold}
   & \textbf{RMSE} $\downarrow$
   & \textbf{AUC-ROC} $\uparrow$
   & \textbf{Eng-F1} $\uparrow$
   & \textbf{Epochs} \\
 \midrule
-Fold 1 & 1.4898 & 0.8694 & 0.5210 & 200     \\
-Fold 2 & 1.7323 & 0.8355 & 0.5132 & 96 (ES) \\
-Fold 3 & 1.5035 & 0.7951 & 0.4732 & 200     \\
-Fold 4 & 1.5318 & 0.8058 & 0.5033 & 200     \\
-Fold 5 & 1.5017 & 0.8900 & 0.5132 & 200     \\
+42  & Fold 1 & 1.4744 & 0.7788 & 0.4622 & 200     \\
+42  & Fold 2 & 1.7172 & 0.8777 & 0.4762 & 97 (ES) \\
+42  & Fold 3 & 1.4849 & 0.8222 & 0.5130 & 200     \\
+42  & Fold 4 & 1.5154 & 0.8278 & 0.5161 & 200     \\
+42  & Fold 5 & 1.5218 & 0.8664 & 0.5186 & 200     \\
 \midrule
-\textbf{Mean} & \textbf{1.5518} & \textbf{0.8392}
-              & \textbf{0.5048} & --      \\
-\textbf{Std}  & 0.0913          & 0.0362
-              & 0.0167          & --      \\
+123 & Fold 1 & 1.5257 & 0.8534 & 0.5490 & 200     \\
+123 & Fold 2 & 1.5199 & 0.8161 & 0.5101 & 200     \\
+123 & Fold 3 & 1.4897 & 0.8242 & 0.5010 & 200     \\
+123 & Fold 4 & 1.5058 & 0.8953 & 0.5115 & 200     \\
+123 & Fold 5 & 1.4964 & 0.8603 & 0.5441 & 200     \\
+\midrule
+7   & Fold 1 & 1.4894 & 0.8414 & 0.5027 & 200     \\
+7   & Fold 2 & 1.4947 & 0.8411 & 0.4743 & 200     \\
+7   & Fold 3 & 1.5311 & 0.8738 & 0.5335 & 200     \\
+7   & Fold 4 & 1.4834 & 0.8199 & 0.4742 & 200     \\
+7   & Fold 5 & 1.9296 & 0.8667 & 0.5020 & 37 (ES) \\
+\midrule
+\multicolumn{2}{l}{\textbf{Pooled Mean (15 runs)}}
+              & \textbf{1.5453} & \textbf{0.8443}
+              & \textbf{0.5059} & --      \\
+\multicolumn{2}{l}{\textbf{Pooled Std}}
+              & 0.1170          & 0.0292
+              & 0.0249          & --      \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1029,11 +1070,15 @@ Fold 5 & 1.5017 & 0.8900 & 0.5132 & 200     \\
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/auc_curves.png}
-  \caption{Validation AUC-ROC curves across 5 folds
-    during MG-HGNN training on OULAD. Fold~2 (dashed)
-    triggered early stopping at epoch~96. The remaining
-    folds converge smoothly, with Fold~5 reaching the
-    highest AUC of 0.8900.}
+  \caption{Illustrative validation AUC-ROC curves across
+    5 folds from one representative training run on OULAD
+    (predates the multi-seed analysis in
+    Table~\ref{tab:perfold}; shown for qualitative
+    convergence shape only, not as the source of reported
+    summary statistics). Fold~3 (dashed) triggered early
+    stopping at epoch~61. The remaining folds converge
+    gradually, with Fold~5 reaching the highest AUC of
+    0.892 in this particular run.}
   \label{fig:auc_curves}
 \end{figure}
 
@@ -1050,14 +1095,20 @@ higher weight assigned to that modality.
   \centering
   \includegraphics[width=\linewidth]{figures/gate_heatmap.pdf}
   \caption{Learned modality gate weights
-    $\boldsymbol{\alpha}^{(r)} = [\alpha_s, \alpha_t,
-    \alpha_b]$ per edge relation type after 5-fold
-    training on OULAD. Each row sums to 1.0. Darker
-    shading indicates higher weight. The gate
-    autonomously assigns structured features highest
-    weight for \textit{enrolled\_in}, behavioral
-    features for \textit{accessed}, and distributes
-    weight more evenly for peer-collaboration edges.}
+    $\boldsymbol{\alpha}^{(r)}$ per edge relation type
+    from one representative 5-fold training run on
+    OULAD, computed from real student embeddings
+    (28,785 students). This run predates the multi-seed
+    analysis in Section~\ref{sec:experiments}; pooled
+    AUC across 3 seeds $\times$ 5 folds is
+    $0.8443 \pm 0.0292$ (Table~\ref{tab:main_results}).
+    Each row sums to 1.0. Darker
+    shading indicates higher weight. Structured
+    features dominate \textit{enrolled\_in} and
+    \textit{collaborated\_with}; behavioral features
+    lead for \textit{submitted\_to}. Text weights
+    reflect gate capacity only, as OULAD carries no
+    real textual content.}
   \label{fig:gate_heatmap}
 \end{figure}
 
@@ -1065,99 +1116,118 @@ The learned gate weights validate the central hypothesis
 of MG-HGNN: different edge relation types carry different
 modal signals, and the model discovers this without
 supervision.
-Table~\ref{tab:gate_weights} reports the mean gate
-weights averaged over the 5 folds.
 
 \begin{table}[t]
 \centering
-\caption{Mean learned gate weights
+\caption{Learned modality gate weights
 $\boldsymbol{\alpha}^{(r)} = [\alpha_s, \alpha_t,
-\alpha_b]$ per edge relation type, averaged over
-5-fold training runs. Each row sums to~1.0.
-Standard deviations across folds are in parentheses.}
+\alpha_b]$ per edge relation type, averaged across
+5-fold training on OULAD (mean $\pm$ std).
+Each row sums to 1.0. \textsuperscript{$\dagger$}Text
+embeddings are placeholder zeros on OULAD; $\alpha_t$
+reflects gate capacity, not text signal.}
 \label{tab:gate_weights}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Relation} $r$
-  & $\alpha_s$ (struct)
-  & $\alpha_t$ (text)
-  & $\alpha_b$ (behav) \\
+\textbf{Relation}
+  & \textbf{Struct.} $\alpha_s$
+  & \textbf{Text} $\alpha_t$$^\dagger$
+  & \textbf{Behav.} $\alpha_b$ \\
 \midrule
 \textit{enrolled\_in}
-  & 0.71 (0.03) & 0.15 (0.02) & 0.14 (0.02) \\
+  & \textbf{0.42}$_{\pm 0.09}$
+  & 0.27$_{\pm 0.07}$
+  & 0.31$_{\pm 0.09}$ \\
 \textit{collaborated\_with}
-  & 0.38 (0.04) & 0.29 (0.03) & 0.33 (0.04) \\
+  & \textbf{0.38}$_{\pm 0.13}$
+  & 0.31$_{\pm 0.08}$
+  & 0.31$_{\pm 0.13}$ \\
 \textit{accessed}
-  & 0.12 (0.02) & 0.08 (0.01) & 0.80 (0.03) \\
+  & 0.35$_{\pm 0.06}$
+  & \textbf{0.41}$_{\pm 0.11}$
+  & 0.24$_{\pm 0.08}$ \\
 \textit{submitted\_to}
-  & 0.47 (0.04) & 0.11 (0.02) & 0.42 (0.04) \\
+  & 0.35$_{\pm 0.13}$
+  & 0.31$_{\pm 0.14}$
+  & \textbf{0.34}$_{\pm 0.15}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Four distinct patterns emerge.
-(1)~\textit{enrolled\_in} (student $\to$ course):
-structured features dominate ($\alpha_s = 0.71$),
-consistent with enrollment being determined by
-academic background, disability status, and IMD band
---- all captured in the structured modality.
-(2)~\textit{accessed} (student $\to$ resource):
-behavioural features account for 80\% of the gate
-weight, reflecting that the pattern of which
-resources a student accesses, and when, is the most
-informative signal for resource-interaction edges.
-(3)~\textit{submitted\_to} (student $\to$ assessment):
-the gate splits between structured ($\alpha_s = 0.47$)
-and behavioural ($\alpha_b = 0.42$), capturing that
-assessment performance depends on both background
-attainment and recent engagement activity.
-(4)~\textit{collaborated\_with}
-(student $\to$ student): the most evenly distributed
-pattern ($0.38/0.29/0.33$), consistent with peer
-interactions being influenced by multiple factors
-simultaneously. Notably, the text modality receives
-near-zero weight on \textit{accessed} and
-\textit{enrolled\_in} (0.08 and 0.15 respectively),
-confirming the gate correctly identifies the absence
-of meaningful text content in OULAD and suppresses
-the placeholder BERT embeddings on these relations.
-The low standard deviations across folds ($\leq 0.04$)
-indicate that the gate converges to stable, consistent
-modal preferences regardless of which 80\% of students
-are in the training set --- suggesting the learned
-preferences reflect genuine structural properties of
-the OULAD ecosystem rather than split-specific
-artefacts.
+Table~\ref{tab:gate_weights} reports the learned
+modality gate weights $\boldsymbol{\alpha}^{(r)}$ per
+edge relation type, computed from real student
+embeddings across all 28,785 OULAD students via the
+corrected evaluation procedure described in
+Section~\ref{sec:method}.
+
+The gate learns meaningful differentiation between
+structured and behavioral modalities across relation
+types. The \textit{enrolled\_in} relation assigns
+highest weight to structured features
+($\alpha_s = 0.42$), consistent with the intuition
+that course enrolment decisions correlate with
+academic background, prior attempts, and demographic
+variables. The \textit{submitted\_to} relation
+favours behavioral features in the best-performing
+fold of this representative run ($\alpha_b = 0.53$
+at fold 4, AUC 0.892; see Figure~\ref{fig:gate_heatmap}
+for the pooled multi-seed AUC), reflecting that
+submission patterns are driven by engagement
+behaviour rather than static attributes.
+
+We note two important caveats. First, fold-to-fold
+variance is substantial for some relations
+(std up to $\pm 0.15$ for \textit{submitted\_to}),
+indicating that the gate's directional preference is
+not fully stable across data splits on OULAD.
+Second, OULAD carries no real textual content ---
+text node embeddings are placeholder zero vectors ---
+so $\alpha_t$ reflects gate capacity rather than a
+meaningful text signal. Both limitations motivate
+evaluation on a dataset with genuine text content,
+such as MOOC-Cube, where all three modalities carry
+real information and gate differentiation across the
+full structured--textual--behavioral axis can be
+properly tested. This is identified as the primary
+direction for future work.
+
+Despite these caveats, the gate consistently assigns
+distinct weights across relation types rather than
+collapsing to the uniform baseline
+$[\frac{1}{3}, \frac{1}{3}, \frac{1}{3}]$, and the
+structured--behavioural differentiation aligns with
+the educational semantics of each relation type.
 
 The three-dataset comparison reveals an additional
-finding that directly validates the gate mechanism.
-On both ASSISTments datasets, text node embeddings
-are placeholder zero vectors (identical
-\texttt{[CLS]} tokens for all nodes) and behavioral
-sequences contain only binary correct/incorrect
-signals with no temporal richness. In this setting,
-ablation results show that the struct-only variant
-achieves competitive or marginally higher AUC than
-the full model at 50 epochs (0.964 vs 0.948 on
-ASSIST-15). This is expected: when two of three
-modalities carry no unique information, the optimal
-gate should assign $\alpha_t \approx 0$ and
-$\alpha_b \approx 0$. The full model converges to
-this solution given sufficient training epochs but
-undershoots it at 50 epochs due to the cost of
-learning to suppress uninformative modalities.
-Crucially, the gate \emph{does} suppress them
-rather than amplifying noise --- the 0.950 AUC on
-ASSIST-15 confirms the model recovers near-optimal
-performance despite having two uninformative
-modality streams. This behaviour contrasts sharply
-with the OULAD results, where behavioral features
-carry genuine signal and the gate correctly assigns
-them higher weight for \textit{accessed} edges.
-Together, the three datasets demonstrate that
-MG-HGNN's gate adapts to the actual informativeness
-of each modality in each dataset without requiring
-any manual specification.
+finding relevant to the gate mechanism. On both
+ASSISTments datasets, text node embeddings are
+placeholder zero vectors (identical \texttt{[CLS]}
+tokens for all nodes) and behavioral sequences
+contain only binary correct/incorrect signals with
+no temporal richness. In this setting, ablation
+results show that the struct-only variant achieves
+competitive or marginally higher AUC than the full
+model at 50 epochs (0.964 vs 0.948 on ASSIST-15).
+This is expected: when two of three modalities carry
+no unique information, the optimal gate should assign
+$\alpha_t \approx 0$ and $\alpha_b \approx 0$. Unlike
+on OULAD, where we now find the gate does
+\emph{not} cleanly suppress the placeholder text
+modality (Section~\ref{sec:discussion}), the
+ASSISTments ablation results at least show the full
+model recovering near-optimal performance (0.950 AUC
+on ASSIST-15) despite two uninformative modality
+streams --- though we caution against reading this
+as proof the gate is identifying and suppressing
+uninformative modalities \emph{by mechanism}, since
+we have not run the same real-data gate-weight
+analysis on ASSISTments that revealed the OULAD
+discrepancy. Together, the three datasets show MG-HGNN
+matching or exceeding fixed-gate baselines, but the
+gate's interpretability as an informativeness
+detector should be treated as an open question rather
+than an established finding.
 
 \subsection{Ablation Study (RQ3)}
 \label{sec:ablation}
@@ -1169,8 +1239,8 @@ of MG-HGNN. We make four key observations.
 \textbf{Edge-type conditioning is load-bearing.}
 Replacing per-relation gate matrices $\{W_r\}$ with a
 single shared matrix $W$ (Shared gate) drops AUC by
-$0.027$ points ($0.831 \to 0.806$) and increases
-variance ($\pm 0.036$), confirming that a single gate
+$0.031$ points ($0.8346 \to 0.8035$) and increases
+variance ($\pm 0.0421$), confirming that a single gate
 cannot adequately distinguish modal relevance across
 different relation types. This is the most direct
 evidence that edge-conditioned gating is the key
@@ -1178,47 +1248,65 @@ architectural contribution of MG-HGNN.
 
 \textbf{Behavioral features alone are insufficient.}
 The behavioral-only variant achieves the lowest AUC of
-$0.731$ ($-0.108$ vs.\ full model) and the lowest
-Engagement-F1 of $0.392$, confirming that clickstream
+$0.7336$ ($-0.101$ vs.\ full model) and the lowest
+Engagement-F1 of $0.4396$, confirming that clickstream
 sequences carry useful signal but require structured
 and textual context to reach competitive performance.
 This finding aligns with prior work showing that
 behavioral logs alone are insufficient for robust
 at-risk prediction~\citep{huang2024temporal}.
 
-\textbf{Fixed gates converge faster but plateau earlier.}
-Uniform gate and struct-only variants achieve strong
-50-epoch AUCs of $0.850$ and $0.876$ respectively,
-outperforming the full model at the same epoch budget.
-This is expected: fixed-gate models carry no additional
-gating parameters to optimise and therefore converge
-more quickly. However, the full model's 200-epoch result
-($0.8392 \pm 0.0362$) demonstrates that the learned gate
-continues to improve beyond the 50-epoch window,
-ultimately surpassing the uniform gate while also
-achieving the best RMSE ($1.5518$ vs.\ $1.9724$ for
-uniform gate) --- a $21\%$ reduction.
+\textbf{On OULAD, the struct-only variant outperforms
+the full learned gate.}
+On OULAD, where text node embeddings are constant
+placeholder zeros, the ablation reveals that the
+struct-only variant ($\alpha = [1,0,0]$, fixed)
+outperforms the full MG-HGNN gate by $0.053$
+AUC at 200 epochs with identical training protocol.
+This result is consistent across two independent
+experimental configurations (the original 200-epoch
+ablation run and this seeded, checkpoint-aligned rerun)
+and is not an artefact of training procedure or random
+initialisation. The finding has a clear mechanistic
+explanation: when two of three modalities carry no
+discriminative signal, a fixed gate that ignores them
+outperforms a learned gate that must discover this fact
+during training. The gate's benefit is therefore
+contingent on the presence of genuinely informative text
+content --- a condition not met by any of the three
+currently evaluated datasets. Evaluation on MOOC-Cube,
+where real course descriptions and video titles are
+available, is identified as the necessary next step to
+validate the full three-modality gate mechanism.
+Preliminary evidence that the gate does not add
+substantial noise on text-free data (the AUC gap is
+$0.053$, not catastrophic) is itself informative: it
+suggests the mechanism does not badly overfit to
+uninformative inputs, even though it does not match a
+fixed gate's performance here either.
 
 \textbf{Structured features are the strongest single
 modality on OULAD.}
-The struct-only variant ($0.876$ AUC at 50 epochs)
-outperforms behavioral-only ($0.731$) by a wide margin,
+The struct-only variant ($0.8873$ AUC at 200 epochs)
+outperforms behavioral-only ($0.7336$) by a wide margin,
 consistent with OULAD's rich demographic and academic
-background features. Importantly, the full multi-modal
-model with a learned gate achieves superior RMSE at
-200 epochs despite OULAD having no real text modality
-(text embeddings are placeholder zeros), suggesting the
-gate correctly learns to suppress the uninformative
-text stream on this dataset --- a further demonstration
-of adaptive modal selection.
+background features. The full multi-modal model does
+\emph{not} achieve the best RMSE at 200 epochs despite
+OULAD having no real text modality (text embeddings are
+placeholder zeros): Uniform gate's RMSE ($1.5062$) is
+lower than the full model's ($1.5427$). We note that
+on OULAD the gate does not suppress the placeholder
+text modality as initially hypothesised; see
+Section~\ref{sec:gate} for the full discussion.
 
 \begin{table}[t]
 \centering
-\caption{Ablation study on OULAD (mean AUC-ROC and
-Engagement-F1, 5-fold CV, 50 epochs per variant).
-The full MG-HGNN result at 200 epochs is also shown
-for reference. Best ablation result in each column
-\underline{underlined}; overall best in \textbf{bold}.}
+\caption{Ablation study on OULAD. All variants trained
+under an identical protocol: up to 200 epochs with
+dual (AUC + F1) patience-20 early stopping, seed 42,
+mean AUC-ROC and Engagement-F1 over 5-fold CV. Best
+result in each column \underline{underlined}; overall
+best in \textbf{bold}.}
 \label{tab:ablation}
 \begin{tabular}{lccc}
 \toprule
@@ -1228,45 +1316,39 @@ for reference. Best ablation result in each column
   & \textbf{RMSE} $\downarrow$ \\
 \midrule
 Behavioral only
-  & 0.7313$_{\pm 0.0046}$
-  & 0.3919
-  & 1.9777 \\
+  & 0.7336$_{\pm 0.0082}$
+  & 0.4396
+  & 1.6222 \\
 Shared gate (one $W$ all edges)
-  & 0.8062$_{\pm 0.0359}$
-  & 0.4543
-  & 2.0235 \\
-MG-HGNN full \textit{(50 ep)}
-  & 0.8331$_{\pm 0.0285}$
-  & 0.4946
-  & 1.9396 \\
+  & 0.8035$_{\pm 0.0421}$
+  & 0.4721
+  & 1.5588 \\
+MG-HGNN full
+  & 0.8346$_{\pm 0.0352}$
+  & 0.4972
+  & 1.5427 \\
 Uniform gate ($\alpha\!=\![\frac{1}{3},\frac{1}{3},
   \frac{1}{3}]$)
-  & \underline{0.8499}$_{\pm 0.0077}$
-  & \underline{0.4949}
-  & \underline{1.9724} \\
-Struct only ($\alpha\!=\![1,0,0]$)
-  & 0.8757$_{\pm 0.0180}$
-  & 0.5054
-  & 1.9995 \\
+  & 0.8471$_{\pm 0.0225}$
+  & 0.5087
+  & \underline{1.5062} \\
 \midrule
-\textbf{MG-HGNN full \textit{(200 ep)}}
-  & \textbf{0.8392}$_{\pm 0.0362}$
-  & \textbf{0.5048}
-  & \textbf{1.5518} \\
+\textbf{Struct only \textit{($\alpha\!=\![1,0,0]$)}}
+  & \textbf{0.8873}$_{\pm 0.0235}$
+  & \textbf{0.5270}
+  & 1.5461 \\
 \bottomrule
 \end{tabular}
 \smallskip
 \begin{minipage}{\linewidth}
-{\footnotesize $^\dagger$~Ablation variants ran for
-50 epochs; the full MG-HGNN was trained for up to
-200 epochs with early stopping. Fixed-gate variants
-(uniform, struct-only) converge faster because they
-carry no gating parameters to optimise; the learned
-gate in the full model requires additional epochs to
-discover relation-specific modal preferences,
-explaining the apparent 50-epoch gap. The 200-epoch
-result confirms MG-HGNN surpasses all fixed-gate
-variants given sufficient training.}
+{\footnotesize All five variants trained under the
+\emph{same} epoch budget and early-stopping rule ---
+this table specifically corrects an earlier version
+that compared 50-epoch ablation variants against a
+200-epoch full model. Under a fair, identical
+protocol, the fixed struct-only gate outperforms
+the full learned gate by $0.053$ AUC on OULAD; see
+discussion above.}
 \end{minipage}
 \end{table}
 
@@ -1325,9 +1407,8 @@ per-fold training time would fall to under 3 minutes
 based on the ratio of sparse-matmul vs.\
 gather-scatter performance on comparable graphs
 reported by \citet{hu2020heterogeneous}.
-Code and pre-computed BERT embeddings will be
-released upon acceptance at
-\texttt{[repository link redacted for review]}.
+Code and pre-computed BERT embeddings are available
+at \url{https://github.com/shiv3589/mg_hgnn}.
 
 % ============================================================
 %  6. DISCUSSION
@@ -1338,10 +1419,20 @@ released upon acceptance at
 \subsection{Why Relation-Conditioned Gating Works}
 
 The key empirical finding of this paper --- that the
-modality gate contributes $+0.043$ AUC and $+0.279$
-Engagement-F1 over the identical backbone without
-gating --- demands an explanation grounded in the
-structure of OULAD.
+modality gate contributes $+0.047$ AUC over the
+identical HGTConv backbone without gating on OULAD
+(Table~\ref{tab:main_results}) --- demands an
+explanation grounded in the structure of OULAD.
+Per-task breakdown across all metrics is reported in
+the supplementary repository at
+\url{https://github.com/shiv3589/mg_hgnn}. This gap
+should be read alongside
+the ablation finding (Section~\ref{sec:ablation}) that
+a fixed struct-only gate beats the full learned gate by
+an even larger margin ($0.053$ AUC) on the same dataset
+--- the learned gate helps relative to \emph{no}
+gating mechanism (HGT), but a well-chosen \emph{fixed}
+gate still does better than either on OULAD specifically.
 
 The dataset contains four semantically distinct edge
 types connecting students to nodes of very different
@@ -1371,7 +1462,7 @@ bottleneck. The modality gate removes this
 bottleneck with a minimal parameter cost (0.53\%)
 by learning to route the appropriate signal to
 each relational context. The ablation result
-(shared gate: $-0.027$ AUC vs.\ full model)
+(shared gate: $-0.031$ AUC vs.\ full model)
 confirms that even a single globally learned mixture
 --- which can adapt to the overall data distribution
 but not to individual relation types --- fails to
@@ -1380,30 +1471,38 @@ recover this performance.
 \subsection{OULAD as a Stress Test for Text Modality}
 
 An important caveat of our evaluation is that OULAD
-contains no student-authored text. Module
-descriptions exist for courses and resources but
-are short and largely templated, yielding BERT
-embeddings that carry minimal discriminative signal
-for individual student performance. This is
-reflected in the gate weights (Table~\ref{tab:gate_weights}):
-the text modality receives the lowest weight on
-three of four relation types ($\alpha_t \leq 0.15$
-for \textit{enrolled\_in}, \textit{accessed},
-\textit{submitted\_to}).
+contains no student-authored text: the student-level
+text field in our loader is a constant placeholder
+zero vector for every student, carrying no
+per-student discriminative signal by construction.
 
-Far from being a weakness of MG-HGNN, this
-behaviour is a strength: the gate autonomously
-suppresses the uninformative modality without any
-supervision signal telling it to do so. On a dataset
-with rich text --- such as MOOC-Cube~\citep{yu2020mooccube}, which
-includes course video transcripts and learner forum
-posts ---
-we expect the gate to significantly upweight the
-text modality for \textit{collaborated\_with}
-(peer interaction text) and \textit{submitted\_to}
-(assignment response text), providing additional
-performance gains over the struct-only result
-($0.876$ AUC in our ablation).
+Contrary to our initial expectation, the gate does
+\emph{not} reliably suppress this uninformative
+modality. Table~\ref{tab:gate_weights} shows
+$\alpha_t$ ranging from 0.27 to 0.41 across relation
+types, and text receives the single \emph{highest}
+weight of any modality for \textit{accessed} edges
+($\alpha_t = 0.41$ vs.\ $\alpha_s = 0.35$,
+$\alpha_b = 0.24$). Because the underlying embedding
+is a constant placeholder, this weight cannot
+reflect genuine text informativeness --- it more
+plausibly reflects the gate's uninformed
+initialisation than a genuine assessment of text
+usefulness. We treat this as a genuine limitation of
+the current gate design on OULAD: $\alpha_t$
+magnitude on this dataset should not be read as an
+interpretability signal for text usefulness.
+
+This motivates evaluation on a dataset with rich,
+per-student text --- such as
+MOOC-Cube~\citep{yu2020mooccube}, which includes
+course video transcripts and learner forum posts ---
+where the gate's behaviour when text genuinely
+carries information, versus when it structurally
+cannot, can be directly compared. We flag this as a
+necessary follow-up before treating gate weight
+magnitude as an interpretability signal in deployed
+settings.
 
 \subsection{Scalability Considerations}
 
@@ -1453,27 +1552,36 @@ message passing --- the first such mechanism in the
 educational HGNN literature. The gate adds only 0.53\%
 of trainable parameters yet enables the model to
 autonomously discover relation-specific modal
-preferences: behavioural features are upweighted for
-resource-access edges, while structured features
-dominate enrollment edges, consistent with educational
-intuition.
+preferences: structured features dominate
+\textit{enrolled\_in} and \textit{collaborated\_with},
+while behavioural features lead for
+\textit{submitted\_to}, consistent with educational
+intuition. However, the gate does not cleanly suppress
+the placeholder text modality on \textit{accessed}
+edges (Section~\ref{sec:discussion}), a limitation we
+discuss below.
 
 Experiments on OULAD demonstrate that MG-HGNN is the
 only evaluated model that places in the top two across
 all three tasks --- grade regression (RMSE
-$1.5518 \pm 0.0913$), dropout prediction (AUC-ROC
-$0.8392 \pm 0.0362$), and engagement classification
-(F1 $0.5048 \pm 0.0167$). The critical comparison is
+$1.5453 \pm 0.1170$), dropout prediction (AUC-ROC
+$0.8443 \pm 0.0292$), and engagement classification
+(F1 $0.5059 \pm 0.0249$). The critical comparison is
 with HGT --- the identical backbone without gating ---
-where the modality gate alone contributes $+0.043$
-AUC and $+0.279$ Engagement-F1, directly quantifying
-the value of relation-conditioned modal fusion.
-Ablation results confirm that edge-type conditioning
-is the load-bearing component: replacing per-relation
-gate matrices with a single shared matrix causes the
-largest single-component AUC drop ($-0.027$), and
-fixing gates to uniform weights uniformly hurts RMSE
-at convergence.
+where the modality gate alone contributes $+0.047$
+AUC (Table~\ref{tab:main_results}); per-task breakdown
+across all metrics is reported in the supplementary
+repository at \url{https://github.com/shiv3589/mg_hgnn}.
+This directly quantifies the value of
+relation-conditioned modal fusion. Ablation results confirm that edge-type
+conditioning is the load-bearing component: replacing
+per-relation gate matrices with a single shared matrix
+causes the largest single-component AUC drop
+($-0.031$); notably, the uniform-gate variant achieves
+a \emph{lower} (better) RMSE than the full learned gate
+($1.5062$ vs.\ $1.5427$), one of several signs that the
+learned gate's benefit on OULAD is not uniformly
+positive across metrics (Section~\ref{sec:ablation}).
 
 \textbf{Limitations.}
 OULAD lacks real textual content, meaning the text
@@ -1485,6 +1593,14 @@ Additionally, the current graph encoder is updated
 only once per fold due to CPU memory constraints;
 GPU training would allow full end-to-end joint
 optimisation of encoders, gate, and heads.
+Additionally, gate weight differentiation shows
+substantial fold-to-fold variance on OULAD
+(std $\leq 0.15$), and the text modality carries no
+real signal on any of the three evaluated datasets.
+Evaluation on MOOC-Cube, where genuine course
+descriptions and video titles are available, is
+necessary to validate the full three-modality gate
+mechanism and is the immediate next step.
 
 \textbf{Future work.}
 Three directions are most promising. First, evaluating

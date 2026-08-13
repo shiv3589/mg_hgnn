@@ -37,6 +37,25 @@ from train import TrainingConfig, make_synthetic_data, _class_dist, _save_result
 
 
 # ----------------------------------------------------------------
+# Deterministic seeding — nothing in this file called any of these
+# before, so every run (model init, HGTConv/Linear/LayerNorm weights,
+# graph_step's warmup torch.randperm subsample, dropout masks) was
+# fully unseeded. That's the actual source of the 0.834 vs 0.866 gap
+# investigated in run_ablation.py — not a training-procedure bug.
+# ----------------------------------------------------------------
+
+def seed_everything(seed: int) -> None:
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark     = False
+
+
+# ----------------------------------------------------------------
 # FIX 3 — NeighborLoader
 # ----------------------------------------------------------------
 
@@ -525,6 +544,9 @@ def main() -> None:
     parser.add_argument("--use-cache", action="store_true",
                         help="Load pre-computed BERT embeddings from "
                              "data/bert_cache_<dataset>.pt")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Base seed; fold k uses seed+k "
+                             "(model init, warmup subsampling, dropout)")
     args = parser.parse_args()
 
     cfg       = Config()
@@ -619,6 +641,13 @@ def main() -> None:
               f"(train={len(train_idx):,}, val={len(val_idx):,})")
         print(f"{'='*52}")
 
+        # Seed model init + graph_step's warmup subsample + dropout masks.
+        # Fold ASSIGNMENT (StratifiedKFold above) stays fixed at
+        # random_state=42 regardless of --seed, so different --seed runs
+        # compare the same 5 folds under different initialization only —
+        # that's what isolates seed-variance from fold-variance.
+        seed_everything(args.seed + fold_k)
+
         model   = MG_HGNN(cfg)
         history, best = train_one_fold_fast(
             model, train_idx, val_idx, data, cfg, train_cfg,
@@ -631,9 +660,14 @@ def main() -> None:
               f"RMSE={best['rmse']:.4f}  AUC={best['auc']:.4f}  "
               f"F1={best['f1']:.4f}  best-AUC-ep={best['best_auc_epoch']}")
 
+        # Legacy path (plot_auc_curves.py / _regen_gate_heatmap*.py read this
+        # unconditionally — keep it so existing figure regen scripts don't
+        # silently break) plus a seed-tagged copy for the variance sweep.
         out_path = Path(cfg.results_dir) / f"training_history_{args.dataset}_fast.json"
         _save_results(all_histories, all_metrics, out_path, args.dataset, n_folds)
-        print(f"  [saved] {fold_k + 1}/{n_folds} folds → {out_path}")
+        seed_out_path = Path(cfg.results_dir) / f"training_history_{args.dataset}_seed{args.seed}.json"
+        _save_results(all_histories, all_metrics, seed_out_path, args.dataset, n_folds)
+        print(f"  [saved] {fold_k + 1}/{n_folds} folds → {out_path}  |  {seed_out_path}")
 
     rmses = [m["rmse"] for m in all_metrics]
     aucs  = [m["auc"]  for m in all_metrics]
@@ -649,7 +683,9 @@ def main() -> None:
 
     out_path = Path(cfg.results_dir) / f"training_history_{args.dataset}_fast.json"
     _save_results(all_histories, all_metrics, out_path, args.dataset, n_folds)
-    print(f"\n  Histories saved → {out_path}")
+    seed_out_path = Path(cfg.results_dir) / f"training_history_{args.dataset}_seed{args.seed}.json"
+    _save_results(all_histories, all_metrics, seed_out_path, args.dataset, n_folds)
+    print(f"\n  Histories saved → {out_path}  |  {seed_out_path}")
 
     # ── Final metrics table (last fold's best checkpoint) ────────────────
     last_fold_k  = n_folds - 1

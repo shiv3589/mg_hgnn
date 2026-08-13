@@ -122,20 +122,40 @@ def print_results_table(results: Dict[str, float], model_name: str) -> None:
 def visualize_gate_weights(
     model:     "MG_HGNN",
     save_path: str = "results/gate_heatmap.pdf",
+    h_s:       "torch.Tensor | None" = None,
+    h_t:       "torch.Tensor | None" = None,
+    h_b:       "torch.Tensor | None" = None,
 ) -> None:
     """
     Plot a (n_edge_types × 3) heatmap of the learned modality gate weights.
 
-    Calls model.gate.get_gate_weights(r) for each edge-type relation r,
-    which returns a (3,) numpy array [α_structured, α_text, α_behavioral].
+    If real encoded embeddings (h_s, h_t, h_b — student structured/text/
+    behavioral embeddings, e.g. from model.struct_enc/bert_cache/model.behav_enc)
+    are supplied, uses model.gate.get_gate_weights_from_data(r, h_s, h_t, h_b)
+    for each edge-type relation r — the actual per-sample alpha the model
+    produces, averaged over samples. This is the correct source for Figure 2 /
+    Table 6.
+
+    If h_s/h_t/h_b are omitted, falls back to the synthetic-probe
+    model.gate.get_gate_weights(r). NOTE: that fallback was found (2026-08-11)
+    to wash out learned per-relation differentiation to ~[0.33, 0.33, 0.33]
+    regardless of training — see models/gate.py docstrings. Only use the
+    fallback for a quick sanity check, never to report learned behavior.
+
     Saves both PDF (vector) and PNG.
     """
     edge_types = model.gate.edge_types
     modalities = ["Structured", "Text", "Behavioral"]
 
-    weights = np.stack(
-        [model.gate.get_gate_weights(r) for r in edge_types], axis=0
-    )   # (n_rel, 3)
+    if h_s is not None and h_t is not None and h_b is not None:
+        weights = np.stack(
+            [model.gate.get_gate_weights_from_data(r, h_s, h_t, h_b)
+             for r in edge_types], axis=0
+        )   # (n_rel, 3)
+    else:
+        weights = np.stack(
+            [model.gate.get_gate_weights(r) for r in edge_types], axis=0
+        )   # (n_rel, 3)
 
     # Readable row labels: replace underscores with spaces
     row_labels = [r.replace("_", " ") for r in edge_types]

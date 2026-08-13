@@ -1,7 +1,9 @@
 """
 Ablation study for MG-HGNN.
-Runs 5 variants × 5 folds × 50 epochs each (~45 min on CPU).
-Results saved to results/ablation_results.json.
+Runs 5 variants × 5 folds × up to 200 epochs each (same budget and
+dual-patience early stopping as MG-HGNN's main training run — fair
+comparison; most folds stop well before 200 via patience).
+Results saved to results/ablation_results_<dataset>.json.
 """
 
 import argparse
@@ -30,6 +32,7 @@ from train_fast import (
     evaluate_heads,
     graph_step,
     heads_step,
+    seed_everything,
     _n_students,
 )
 
@@ -41,8 +44,9 @@ VARIANTS = {
     "Behavioral only":   MG_HGNN_BehavOnly,
 }
 
-N_FOLDS  = 5
-N_EPOCHS = 50   # enough to compare; full run uses 200
+N_FOLDS   = 5
+N_EPOCHS  = 200   # full MG-HGNN budget — same as cfg.epochs, fair comparison
+N_PATIENCE = 20   # dual (AUC + F1) patience — same rule as train_fast.py
 
 
 def _build_losses(data, train_t):
@@ -85,12 +89,16 @@ def _head_params(model):
     )
 
 
-def run_variant(name, ModelClass, data, meta, bert_cache, cfg, loader):
+def run_variant(name, ModelClass, data, meta, bert_cache, cfg, loader, seed=42):
     print(f"\n{'='*58}")
     print(f"  Variant: {name}")
     print(f"{'='*58}")
     t_start = time.time()
 
+    # Fold ASSIGNMENT stays fixed at random_state=42 regardless of `seed`
+    # (see train_fast.py main()) — same 5 folds across seeds, only model
+    # init/warmup-subsample/dropout differ, so seed-variance and
+    # fold-variance stay separable.
     skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
     drop_labels = meta["dropout"].numpy()
     n = _n_students(data)
@@ -99,6 +107,8 @@ def run_variant(name, ModelClass, data, meta, bert_cache, cfg, loader):
 
     for fold_k, (train_idx, val_idx) in enumerate(
             skf.split(np.zeros(len(drop_labels)), drop_labels)):
+
+        seed_everything(seed + fold_k)
 
         train_t = torch.tensor(train_idx, dtype=torch.long)
         val_t   = torch.tensor(val_idx,   dtype=torch.long)
@@ -114,19 +124,58 @@ def run_variant(name, ModelClass, data, meta, bert_cache, cfg, loader):
         graph_step(model, loader, bert_cache, train_t, data, cfg,
                    opt_g, mse_fn, bce_fn, ce_fn, epoch=0, max_nodes=2000)
 
-        # Head training (N_EPOCHS), track best AUC
-        best_auc = 0.0
-        best_f1  = 0.0
-        best_rmse = float("inf")
+        # Head training (up to N_EPOCHS), dual (AUC + F1) patience early
+        # stopping — same rule as train_fast.py's train_one_fold_fast().
+        # best_val_f1 / auc_patience / f1_patience drive stopping only.
+        Path(cfg.checkpoint_dir).mkdir(exist_ok=True)
+        name_slug = name.lower().replace(" ", "_").replace("(", "").replace(")", "")
+        ckpt_path = Path(cfg.checkpoint_dir) / f"ablation_{name_slug}_fold{fold_k}_best.pt"
+
+        best_val_loss = float("inf")
+        best_val_auc  = -1.0
+        best_val_f1   = -1.0
+        auc_patience  = 0
+        f1_patience   = 0
         for epoch in range(N_EPOCHS):
             heads_step(model, h, train_t, data, cfg,
                        opt_h, mse_fn, bce_fn, ce_fn, epoch=epoch)
             vm = evaluate_heads(model, h, val_t, data, cfg,
                                 mse_fn, bce_fn, ce_fn)
-            if vm["val_auc"] > best_auc:
-                best_auc  = vm["val_auc"]
-                best_f1   = vm["val_f1"]
-                best_rmse = vm["val_rmse"]
+
+            # Checkpoint on val_loss improvement — same selection criterion
+            # as train_fast.py (NOT best-val-AUC-so-far).
+            if vm["val_loss"] < best_val_loss:
+                best_val_loss = vm["val_loss"]
+                torch.save({"model_state_dict": model.state_dict()}, ckpt_path)
+
+            if vm["val_auc"] > best_val_auc:
+                best_val_auc = vm["val_auc"]
+                auc_patience = 0
+            else:
+                auc_patience += 1
+
+            if vm["val_f1"] > best_val_f1:
+                best_val_f1 = vm["val_f1"]
+                f1_patience = 0
+            else:
+                f1_patience += 1
+
+            if auc_patience >= N_PATIENCE and f1_patience >= N_PATIENCE:
+                print(f"    Early stop at epoch {epoch + 1} "
+                      f"(auc_pat={auc_patience}, f1_pat={f1_patience})")
+                break
+
+        # Reload best (lowest val_loss) checkpoint, re-encode, final eval —
+        # exactly mirrors train_fast.py's train_one_fold_fast() tail.
+        model.load_state_dict(
+            torch.load(ckpt_path, weights_only=True)["model_state_dict"])
+        model.eval()
+        h_final = encode_all_batched(model, loader, bert_cache, n)
+        final_vm = evaluate_heads(model, h_final, val_t, data, cfg,
+                                   mse_fn, bce_fn, ce_fn)
+        best_auc  = final_vm["val_auc"]
+        best_f1   = final_vm["val_f1"]
+        best_rmse = final_vm["val_rmse"]
 
         fold_aucs.append(best_auc)
         fold_f1s.append(best_f1)
@@ -152,6 +201,9 @@ def main():
     parser.add_argument("--dataset",
                         choices=["oulad", "assistments09", "assistments15"],
                         default="oulad")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Base seed; fold k uses seed+k (same "
+                             "convention as train_fast.py)")
     args = parser.parse_args()
 
     cfg = Config()
@@ -212,17 +264,25 @@ def main():
 
     for name, ModelClass in VARIANTS.items():
         all_results[name] = run_variant(
-            name, ModelClass, data, meta, bert_cache, cfg, loader
+            name, ModelClass, data, meta, bert_cache, cfg, loader,
+            seed=args.seed,
         )
-        # Save incrementally so a crash doesn't lose earlier variants
+        # Save incrementally so a crash doesn't lose earlier variants.
+        # Keep the existing dataset-tagged path (nothing else in the repo
+        # reads it, but it's a reasonable "latest run" pointer) and add a
+        # seed-tagged path for the multi-seed sweep's collector.
         out_path = f"results/ablation_results_{args.dataset}.json"
         with open(out_path, "w") as f:
+            json.dump(all_results, f, indent=2)
+        seed_out_path = f"results/ablation_results_seed{args.seed}.json"
+        with open(seed_out_path, "w") as f:
             json.dump(all_results, f, indent=2)
 
     # Final table
     W = 58
     print(f"\n{'='*W}")
-    print(f"  ABLATION TABLE  ({N_FOLDS}-fold, {N_EPOCHS} epochs each)")
+    print(f"  ABLATION TABLE  ({N_FOLDS}-fold, up to {N_EPOCHS} epochs, "
+          f"patience={N_PATIENCE})")
     print(f"{'='*W}")
     print(f"  {'Variant':<28} {'AUC':>8}  {'±':>6}  {'RMSE':>8}  {'F1':>7}")
     print(f"  {'-'*W}")
@@ -233,7 +293,7 @@ def main():
               f"{r['rmse_mean']:>8.4f}  "
               f"{r['f1_mean']:>7.4f}{marker}")
     print(f"{'='*W}")
-    print(f"\nSaved → {out_path}")
+    print(f"\nSaved → {out_path}  |  {seed_out_path}")
 
 
 if __name__ == "__main__":

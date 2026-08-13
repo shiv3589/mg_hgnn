@@ -26,6 +26,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import scipy.sparse as sp
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import StratifiedShuffleSplit
 from torch_geometric.data import HeteroData
 from torch_geometric.nn import GATConv, HGTConv, HANConv
 from sklearn.metrics import roc_auc_score, f1_score, mean_squared_error
@@ -40,7 +41,12 @@ from models.encoders import StructuredEncoder, TextEncoder, BehavioralEncoder
 _TRAIN_EPOCHS       = 30    # full end-to-end epochs (GAT)
 _HGT_WARMUP_EPOCHS  = 3     # full-graph warmup before head-only training
 _HAN_WARMUP_EPOCHS  = 3
-_TRAIN_HEAD_EPOCHS  = 50    # head-only epochs after warmup (HGT, HAN)
+_TRAIN_HEAD_EPOCHS  = 200   # head-only epoch budget (HGT, HAN) — matches
+                             # MG-HGNN's cfg.epochs; dual-patience stopping
+                             # below almost always ends the run earlier
+_HEAD_PATIENCE      = 20    # dual (AUC + F1) patience — matches cfg.patience
+                             # and train_fast.py's early-stop rule exactly
+_HEAD_VAL_FRAC      = 0.2   # inner val split carved from train_idx
 _HAN_MAX_ACCESSED   = 10_000  # cap accessed edges before building SRS meta-path
 _BERT_CACHE_PATH    = "data/bert_cache_oulad.pt"
 
@@ -238,6 +244,45 @@ class _PredHeads(nn.Module):
         }
 
 
+def _evaluate_heads(
+    heads: _PredHeads,
+    h_all: torch.Tensor,
+    idx_t: torch.Tensor,
+    data:  HeteroData,
+    mse_fn: nn.MSELoss,
+    bce_fn,
+    ce_fn:  nn.CrossEntropyLoss,
+) -> Dict[str, float]:
+    """Mirrors train_fast.py's evaluate_heads(), adapted to the _PredHeads /
+    cached-embedding interface used by the HGT and HAN baselines."""
+    heads.eval()
+    with torch.no_grad():
+        h   = h_all[idx_t]
+        out = heads(h)
+        val_loss = (
+            _LAMBDA_GRADE * mse_fn(out["grade"].squeeze(),   data["student"].y_grade[idx_t])
+            + _LAMBDA_DROP * bce_fn(out["dropout"].squeeze(), data["student"].y_dropout[idx_t])
+            + _LAMBDA_ENG  * ce_fn(out["engagement"],         data["student"].y_engagement[idx_t])
+        )
+
+        g_pred = out["grade"].squeeze().numpy()
+        g_true = data["student"].y_grade[idx_t].numpy()
+        rmse   = float(np.sqrt(mean_squared_error(g_true, g_pred)))
+
+        d_pred = out["dropout"].squeeze().numpy()
+        d_true = data["student"].y_dropout[idx_t].numpy().astype(int)
+        try:
+            auc = float(roc_auc_score(d_true, d_pred))
+        except ValueError:
+            auc = 0.5
+
+        e_pred = out["engagement"].argmax(dim=-1).numpy()
+        e_true = data["student"].y_engagement[idx_t].numpy()
+        f1 = float(f1_score(e_true, e_pred, average="macro", zero_division=0))
+
+    return {"val_loss": float(val_loss), "val_rmse": rmse, "val_auc": auc, "val_f1": f1}
+
+
 def _train_heads(
     heads:     _PredHeads,
     h_all:     torch.Tensor,
@@ -245,27 +290,87 @@ def _train_heads(
     train_idx: np.ndarray,
     epochs:    int   = _TRAIN_HEAD_EPOCHS,
     lr:        float = _LR,
+    patience:  int   = _HEAD_PATIENCE,
 ) -> None:
-    """Train prediction heads on frozen cached node embeddings."""
-    idx_t     = torch.tensor(train_idx, dtype=torch.long)
+    """Train prediction heads on frozen cached node embeddings, with the
+    same dual (AUC + F1) patience early-stopping rule as train_fast.py's
+    train_one_fold_fast(): both metrics must stagnate for `patience`
+    epochs before stopping. val_loss is tracked separately only to select
+    the checkpoint restored at the end — it does not drive stopping,
+    matching train_fast.py exactly.
+
+    A held-out validation split is carved out of train_idx (stratified on
+    the dropout label, 80/20, same random_state=42 as the rest of the
+    codebase) so early stopping is not decided on data the model is
+    ultimately scored on.
+    """
+    train_idx = np.asarray(train_idx)
+    drop_labels = data["student"].y_dropout[train_idx].numpy()
+    sss = StratifiedShuffleSplit(
+        n_splits=1, test_size=_HEAD_VAL_FRAC, random_state=42)
+    sub_train, sub_val = next(
+        sss.split(np.zeros(len(train_idx)), drop_labels))
+    inner_train_idx = torch.tensor(train_idx[sub_train], dtype=torch.long)
+    inner_val_idx   = torch.tensor(train_idx[sub_val],   dtype=torch.long)
+
     optimizer = torch.optim.Adam(heads.parameters(), lr=lr)
     mse_fn    = nn.MSELoss()
     ce_fn     = nn.CrossEntropyLoss()
-    bce_fn    = _make_bce(data, idx_t)
+    bce_fn    = _make_bce(data, inner_train_idx)
 
-    h_train = h_all[idx_t].detach()
+    h_train = h_all[inner_train_idx].detach()
 
-    heads.train()
-    for _ in range(epochs):
+    best_val_loss = float("inf")
+    best_val_auc  = -1.0
+    best_val_f1   = -1.0
+    auc_patience  = 0
+    f1_patience   = 0
+    best_state    = {k: v.clone() for k, v in heads.state_dict().items()}
+
+    for epoch in range(epochs):
+        heads.train()
         optimizer.zero_grad()
         p    = heads(h_train)
         loss = (
-            _LAMBDA_GRADE * mse_fn(p["grade"].squeeze(), data["student"].y_grade[idx_t])
-            + _LAMBDA_DROP * bce_fn(p["dropout"].squeeze(), data["student"].y_dropout[idx_t])
-            + _LAMBDA_ENG  * ce_fn(p["engagement"],         data["student"].y_engagement[idx_t])
+            _LAMBDA_GRADE * mse_fn(p["grade"].squeeze(), data["student"].y_grade[inner_train_idx])
+            + _LAMBDA_DROP * bce_fn(p["dropout"].squeeze(), data["student"].y_dropout[inner_train_idx])
+            + _LAMBDA_ENG  * ce_fn(p["engagement"],         data["student"].y_engagement[inner_train_idx])
         )
         loss.backward()
         optimizer.step()
+
+        vm       = _evaluate_heads(heads, h_all, inner_val_idx, data,
+                                    mse_fn, bce_fn, ce_fn)
+        val_loss = vm["val_loss"]
+        val_auc  = vm["val_auc"]
+        val_f1   = vm["val_f1"]
+
+        # Checkpoint on val_loss improvement (matches train_fast.py — this
+        # tracks best state but does not itself drive early stopping)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_state = {k: v.clone() for k, v in heads.state_dict().items()}
+
+        # Dual-patience: both AUC and F1 must stagnate to trigger stop
+        if val_auc > best_val_auc:
+            best_val_auc = val_auc
+            auc_patience = 0
+        else:
+            auc_patience += 1
+
+        if val_f1 > best_val_f1:
+            best_val_f1 = val_f1
+            f1_patience = 0
+        else:
+            f1_patience += 1
+
+        if auc_patience >= patience and f1_patience >= patience:
+            print(f"    Early stop at epoch {epoch + 1} "
+                  f"(auc_pat={auc_patience}, f1_pat={f1_patience})")
+            break
+
+    # Restore best (lowest val_loss) checkpoint before returning
+    heads.load_state_dict(best_state)
 
 
 # ================================================================
@@ -455,12 +560,23 @@ class _HGTNet(nn.Module):
       3. Train prediction heads only on the cached tensor.
     """
 
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, cfg: Config, build_text_encoder: bool = True) -> None:
+        """
+        build_text_encoder=False skips loading the real BERT-backed
+        TextEncoder at construction time. embed()/forward_cached() never
+        touch self.text_enc directly (they consume a precomputed
+        `cached_text` dict), so when a valid BERT embedding cache already
+        exists on disk this avoids loading a full BertModel (~440 MB) into
+        memory for nothing — call ensure_text_enc() first if you later
+        need self.text_enc for real (e.g. the cache-miss fallback in
+        HGTBaseline._get_bert_cache).
+        """
         super().__init__()
         d = cfg.embed_dim
+        self._cfg = cfg
 
         self.struct_enc = StructuredEncoder(cfg)
-        self.text_enc   = TextEncoder(cfg, freeze_bert=True)
+        self.text_enc   = TextEncoder(cfg, freeze_bert=True) if build_text_encoder else None
         self.behav_enc  = BehavioralEncoder(cfg)
         self.inst_enc   = nn.Sequential(
             nn.Linear(cfg.structured_input_dim, d),
@@ -485,6 +601,13 @@ class _HGTNet(nn.Module):
         self.grade_head      = nn.Linear(d, 1)
         self.dropout_head    = nn.Sequential(nn.Linear(d, 1), nn.Sigmoid())
         self.engagement_head = nn.Linear(d, 3)
+
+    def ensure_text_enc(self) -> TextEncoder:
+        """Build the real BERT-backed TextEncoder on first use, if it
+        wasn't constructed eagerly (build_text_encoder=False)."""
+        if self.text_enc is None:
+            self.text_enc = TextEncoder(self._cfg, freeze_bert=True)
+        return self.text_enc
 
     def embed(
         self,
@@ -530,8 +653,10 @@ class HGTBaseline:
       2. Warm up: _HGT_WARMUP_EPOCHS full-graph epochs so HGTConv learns
          meaningful node representations.
       3. Cache student embeddings via embed() under no_grad.
-      4. Train prediction heads for _TRAIN_HEAD_EPOCHS epochs on the
-         cached tensor (class-weighted BCE for dropout).
+      4. Train prediction heads on the cached tensor for up to
+         _TRAIN_HEAD_EPOCHS epochs (class-weighted BCE for dropout),
+         with dual (AUC + F1) patience early stopping on a val split
+         carved from train_idx — same rule as train_fast.py.
     """
 
     def __init__(self, cfg: Optional[Config] = None) -> None:
@@ -540,11 +665,13 @@ class HGTBaseline:
         self._h_all:  Optional[torch.Tensor]         = None
         self._heads:  Optional[_PredHeads]           = None
 
-    def _get_bert_cache(self, data: HeteroData) -> Dict[str, torch.Tensor]:
-        """Load pre-computed BERT embeddings; use broadcast or batched fallback."""
+    def _try_load_bert_cache(self, data: HeteroData) -> Optional[Dict[str, torch.Tensor]]:
+        """Attempt to load pre-computed BERT embeddings from disk. Returns
+        None on a miss (missing file or shape mismatch) — deliberately
+        needs no model, so it can run before _HGTNet (and therefore
+        before any real BertModel) is constructed."""
         try:
             raw = torch.load(_BERT_CACHE_PATH, weights_only=True)
-            # Validate shapes match current dataset before accepting
             if all(
                 ntype in raw and raw[ntype].shape[0] == data[ntype].num_nodes
                 for ntype in ("student", "course", "resource")
@@ -553,6 +680,12 @@ class HGTBaseline:
                 return {k: v.detach() for k, v in raw.items()}
         except FileNotFoundError:
             pass
+        return None
+
+    def _compute_bert_cache_fallback(self, data: HeteroData) -> Dict[str, torch.Tensor]:
+        """Run real BERT to build the embedding cache (broadcast or batched).
+        Only called on a cache miss; builds self._model.text_enc lazily."""
+        text_enc = self._model.ensure_text_enc()
 
         # Detect text-free datasets: all nodes have [CLS]-only stubs
         # (input_ids[:,0]==101, rest zero; mask[:,0]==1, rest zero).
@@ -567,7 +700,7 @@ class HGTBaseline:
         )
         if is_cls_only:
             with torch.no_grad():
-                emb = self._model.text_enc(ids[:1], mask[:1])  # (1, d)
+                emb = text_enc(ids[:1], mask[:1])  # (1, d)
             return {
                 ntype: emb.expand(data[ntype].num_nodes, -1).clone()
                 for ntype in ("student", "course", "resource")
@@ -582,15 +715,27 @@ class HGTBaseline:
             chunks = []
             with torch.no_grad():
                 for i in range(0, len(ids), 256):
-                    h = self._model.text_enc(ids[i:i+256], mask[i:i+256])
+                    h = text_enc(ids[i:i+256], mask[i:i+256])
                     chunks.append(h.detach())
             result[ntype] = torch.cat(chunks, dim=0)
         return result
 
+    def _get_bert_cache(self, data: HeteroData) -> Dict[str, torch.Tensor]:
+        """Load pre-computed BERT embeddings; use broadcast or batched
+        fallback (real BERT) only on a cache miss."""
+        cached = self._try_load_bert_cache(data)
+        if cached is not None:
+            return cached
+        return self._compute_bert_cache_fallback(data)
+
     def fit(self, data: HeteroData, train_idx: np.ndarray) -> None:
         cfg           = self._cfg
-        self._model   = _HGTNet(cfg)
-        cached_text   = self._get_bert_cache(data)
+        # Check the on-disk cache BEFORE building _HGTNet, so a real
+        # BertModel (~440 MB) is only constructed on an actual cache miss.
+        cached_text   = self._try_load_bert_cache(data)
+        self._model   = _HGTNet(cfg, build_text_encoder=(cached_text is None))
+        if cached_text is None:
+            cached_text = self._compute_bert_cache_fallback(data)
 
         # Warmup: train full model so HGTConv weights are meaningful
         opt   = torch.optim.Adam(self._model.parameters(), lr=cfg.lr,
@@ -703,7 +848,9 @@ class HANBaseline:
       2. Warm up: _HAN_WARMUP_EPOCHS full-graph epochs so HANConv weights are
          meaningful.
       3. Cache student embeddings via embed() under no_grad.
-      4. Train prediction heads for _TRAIN_HEAD_EPOCHS epochs (class-weighted BCE).
+      4. Train prediction heads for up to _TRAIN_HEAD_EPOCHS epochs
+         (class-weighted BCE), with the same dual-patience early
+         stopping as HGTBaseline / train_fast.py.
     """
 
     def __init__(self, hidden_dim: int = 128, dropout: float = 0.3) -> None:

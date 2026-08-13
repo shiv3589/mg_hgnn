@@ -58,9 +58,19 @@ class ModalityGate(nn.Module):
     def get_gate_weights(self, edge_type: str) -> np.ndarray:
         """Return the mean gate vector for this relation under a neutral input.
 
-        Builds a canonical input (identity-like: each modality slot is a unit
-        vector along its own slice) and averages the resulting alpha over those
-        embed_dim probe vectors to give a stable (3,) summary for visualization.
+        BUG (found while diagnosing Figure 2 / Table 6, 2026-08-11): this builds
+        a synthetic identity-like probe (each modality slot a unit basis vector)
+        and averages alpha over those embed_dim probe rows. That construction is
+        not representative of real encoded embeddings (h_s/h_t/h_b have very
+        different scale/covariance than one-hot rows) and empirically washes any
+        learned per-relation differentiation back down to ~[0.33, 0.33, 0.33]
+        REGARDLESS of training — verified by comparing this method's output
+        against real-data alpha (see get_gate_weights_from_data) on a fully
+        trained checkpoint: real data shows strong differentiation (e.g.
+        enrolled_in -> [0.47, 0.14, 0.40]), this probe reports near-uniform for
+        every relation on that same checkpoint. Kept for backward compatibility;
+        prefer get_gate_weights_from_data for anything that reports learned
+        behavior (figures, tables).
         """
         gate = self.gates[edge_type]
         d = self.embed_dim
@@ -78,6 +88,24 @@ class ModalityGate(nn.Module):
             alpha = F.softmax(logits, dim=-1)      # (d, 3)
             mean_alpha = alpha.mean(dim=0)         # (3,)
 
+        return mean_alpha.cpu().numpy()
+
+    def get_gate_weights_from_data(
+        self,
+        edge_type: str,
+        h_s: torch.Tensor,
+        h_t: torch.Tensor,
+        h_b: torch.Tensor,
+    ) -> np.ndarray:
+        """Return the mean gate vector for this relation on REAL encoded
+        embeddings, i.e. the actual per-sample alpha the model produces during
+        a forward pass, averaged over all N samples. This is what Figure 2 /
+        Table 6 should report — see get_gate_weights docstring for why the
+        synthetic-probe version is unreliable.
+        """
+        with torch.no_grad():
+            _, alpha = self.forward(edge_type, h_s, h_t, h_b)   # (N, 3)
+            mean_alpha = alpha.mean(dim=0)
         return mean_alpha.cpu().numpy()
 
 
