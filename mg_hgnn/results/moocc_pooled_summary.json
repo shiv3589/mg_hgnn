@@ -1,0 +1,15 @@
+{
+  "dataset": "moocc",
+  "seeds": [
+    42,
+    123,
+    7
+  ],
+  "n_runs": 15,
+  "auc_mean": 0.9749,
+  "auc_std": 0.0108,
+  "f1_mean": 0.6739,
+  "f1_std": 0.0247,
+  "rmse_mean": 0.3325,
+  "rmse_std": 0.0088
+}
