@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # GPU migration 2026-08-14 -- see logs/gpu_migration_note.txt
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -117,13 +118,23 @@ def encode_all_batched(
     bert_cache:     Optional[Dict],
     total_students: int,
 ) -> torch.Tensor:
-    """Encode every student via mini-batches; return full (N, embed_dim) tensor."""
+    """Encode every student via mini-batches; return full (N, embed_dim) tensor.
+
+    GPU migration 2026-08-14: the returned tensor stays CPU-resident (as
+    before) so every downstream caller (graph_step/heads_step/evaluate_heads/
+    _loss/labels/.numpy() calls) needs zero changes. Only the expensive
+    per-batch model.encode_all() forward pass runs on GPU internally --
+    batch and nid are moved to the model's actual device just for that call,
+    then the result is moved back to CPU before being written into all_emb.
+    """
     all_emb = torch.zeros(total_students, model.cfg.embed_dim)
+    enc_device = next(model.parameters()).device
     model.eval()
     with torch.no_grad():
         for batch in loader:
+            batch = batch.to(enc_device)
             n   = batch["student"].batch_size
-            nid = batch["student"].n_id[:n]
+            nid = batch["student"].n_id[:n].cpu()
             emb = model.encode_all(batch, bert_cache)["student"][:n]
             all_emb[nid] = emb.cpu()
     model.train()
@@ -609,6 +620,9 @@ def main() -> None:
             print(f"Cache not found — building {cache_path}…")
             bert_cache = cache_bert_embeddings(data, cfg, save_path=str(cache_path))
 
+    if bert_cache is not None:
+        bert_cache = {k: v.to(device) for k, v in bert_cache.items()}  # GPU migration 2026-08-14
+
     data["student"].y_grade      = meta["grade"].float()
     data["student"].y_dropout    = meta["dropout"].float()
     data["student"].y_engagement = meta["engagement"].long()
@@ -649,6 +663,19 @@ def main() -> None:
         seed_everything(args.seed + fold_k)
 
         model   = MG_HGNN(cfg)
+        # GPU migration 2026-08-14 (corrected): move ONLY the encoder
+        # submodules used inside encode_all() to device, NOT the whole
+        # model. h (from encode_all_batched) stays CPU-resident by design
+        # (see that function's docstring) -- a blanket model.to(device)
+        # would also move grade_head/dropout_head/engagement_head to GPU,
+        # and the first heads_forward(model, h_all[...]) call (h is CPU)
+        # crashes with a device-mismatch RuntimeError. Confirmed by an
+        # actual crash during fold 0 testing before this fix. Submodule
+        # list matches build_optimizers()'s graph_params grouping exactly
+        # (verified against MG_HGNN.encode_all()'s body).
+        for _m in (model.struct_enc, model.text_enc, model.behav_enc,
+                   model.inst_enc, model.gate, model.convs):
+            _m.to(device)
         history, best = train_one_fold_fast(
             model, train_idx, val_idx, data, cfg, train_cfg,
             fold_k=fold_k, bert_cache=bert_cache,
@@ -693,6 +720,16 @@ def main() -> None:
     last_val_t   = torch.tensor(last_val_idx, dtype=torch.long)
     last_ckpt    = Path(cfg.checkpoint_dir) / f"fold_{last_fold_k}_fast_best.pt"
 
+    # GPU migration fix 2026-08-14 (bug found live, seed 42 run): final_model
+    # is intentionally CPU-only (cheap one-off summary, not worth moving),
+    # but bert_cache was still GPU-resident from the fold loop above -- its
+    # struct_enc/behav_enc produced CPU h_s/h_b while _bert_lookup returned
+    # GPU h_t from bert_cache, crashing in ModalityGate's torch.cat with a
+    # device mismatch. Move bert_cache back to CPU here; nothing after this
+    # point in main() needs it on GPU. load_state_dict's default copy_
+    # preserves the destination (CPU) device regardless of what device the
+    # checkpoint's tensors were saved from, so no map_location needed.
+    bert_cache = {k: v.cpu() for k, v in bert_cache.items()}
     final_model = MG_HGNN(cfg)
     final_model.load_state_dict(
         torch.load(last_ckpt, weights_only=True)["model_state_dict"]
