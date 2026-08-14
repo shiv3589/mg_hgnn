@@ -69,16 +69,38 @@ def cache_bert_embeddings(
         ids  = store.input_ids
         mask = store.attention_mask
         N    = ids.shape[0]
-        embs = []
 
         print(f"  Encoding {node_type} ({N:,} nodes) in batches of {batch_size}…", end="", flush=True)
         t1 = time.time()
-        with torch.no_grad():
-            for start in range(0, N, batch_size):
-                e = encoder(ids[start:start + batch_size],
-                            mask[start:start + batch_size])
-                embs.append(e)
-        cache[node_type] = torch.cat(embs, dim=0)   # (N, embed_dim)
+
+        # BROADCAST FIX (2026-08-14): node types without real per-node
+        # text (e.g. MOOCCube's students -- no student text exists in
+        # that dataset at all, so every row is the identical [CLS]-only
+        # stub) were running N separate BERT forward passes for one
+        # distinct input. Confirmed on the moocc run: this stalled the
+        # cache job for 40+ min encoding 199,199 identical students and
+        # drove free RAM from 18GB down to 4GB before it was killed.
+        # Detect a uniform input across the whole node type and encode
+        # it exactly once instead. Applies to any node type this is true
+        # for (not just "student" specifically) -- OULAD's student stub
+        # is uniform too (see this function's docstring), so it benefits
+        # from this fix as well, with identical output values either way.
+        uniform = N > 1 and bool((ids == ids[0]).all() and (mask == mask[0]).all())
+        if uniform:
+            print(f" uniform input detected — encoding once, broadcasting to {N:,}…",
+                  end="", flush=True)
+            with torch.no_grad():
+                one_emb = encoder(ids[0:1], mask[0:1])       # (1, embed_dim)
+            cache[node_type] = one_emb.expand(N, -1).contiguous()
+        else:
+            embs = []
+            with torch.no_grad():
+                for start in range(0, N, batch_size):
+                    e = encoder(ids[start:start + batch_size],
+                                mask[start:start + batch_size])
+                    embs.append(e)
+            cache[node_type] = torch.cat(embs, dim=0)   # (N, embed_dim)
+
         elapsed = time.time() - t1
         print(f"  done in {elapsed:.1f}s  shape={cache[node_type].shape}")
 

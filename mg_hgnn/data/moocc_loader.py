@@ -424,15 +424,25 @@ class MOOCCubeLoader:
         print(f"  collaborated_with: {n_subsampled}/{len(course_to_students)} "
               f"courses subsampled to cap={COLLAB_CAP}")
 
-        collab_pairs: List[Tuple[int, int]] = []
-        HARD_CAP = 5_000_000
+        # >=2 shared courses filter (reintroduced 2026-08-14): the
+        # unfiltered version above hit its 5,000,000-edge hard cap and,
+        # combined with the also-unbounded `accessed` relation below, drove
+        # a single _FullGraphLoader forward pass (no torch-sparse/pyg-lib
+        # available for this torch==2.13.0+cpu build -> no real
+        # NeighborLoader mini-batching) to a confirmed kernel OOM-kill at
+        # 31.6GB RSS. Filtering to students who share >=2 courses (not just
+        # 1, which is common and weak signal) cuts collaborated_with from
+        # ~5M down to the tens-of-thousands range.
+        from collections import Counter
+        pair_course_count: Counter = Counter()
         for c_i, students in capped_course_to_students.items():
             for i in range(len(students)):
                 for j in range(i + 1, len(students)):
-                    collab_pairs.append((students[i], students[j]))
-            if len(collab_pairs) > HARD_CAP:
-                print(f"  collaborated_with: hard cap hit at {len(collab_pairs):,} pairs")
-                break
+                    pair = (min(students[i], students[j]), max(students[i], students[j]))
+                    pair_course_count[pair] += 1
+
+        collab_pairs = [pair for pair, cnt in pair_course_count.items() if cnt >= 2]
+        print(f"  collaborated_with after >=2 filter: {len(collab_pairs):,} edges")
 
         if collab_pairs:
             src_c = np.array([p[0] for p in collab_pairs])
@@ -443,21 +453,39 @@ class MOOCCubeLoader:
 
         # ── 10. Edge: accessed (student → video) ────────────────────────
         # relations/user-video.json has no watch_time (Fix 4), so unlike
-        # OULAD there's no ranking signal to keep only a top-100 subset —
-        # every distinct (student, video) pair is included.
+        # OULAD there's no ranking signal to keep only a "top"-K subset --
+        # capped instead via a reproducible random subsample per student.
+        # Cap reintroduced 2026-08-14 (same K=100 as OULAD's original
+        # top-100 design) as part of the same OOM fix as the collab filter
+        # above: median student only accesses 19 videos, but the tail goes
+        # up to 3,545 for one student -- capping brings the relation from
+        # 8,951,244 down to ~6.6M edges, checked against the real
+        # per-student distribution before picking this value.
+        ACCESS_CAP = 100
+        acc_rng = np.random.default_rng(seed=42)
+        student_videos: Dict[str, List[str]] = defaultdict(list)
+        for uid, vid in rel_uv:
+            student_videos[uid].append(vid)
+
         acc_src, acc_dst = [], []
         seen_pairs = set()
-        for uid, vid in rel_uv:
+        for uid, vids in student_videos.items():
             s_i = student_map.get(uid)
-            r_i = video_map.get(vid)
-            if s_i is None or r_i is None:
+            if s_i is None:
                 continue
-            key = (s_i, r_i)
-            if key in seen_pairs:
-                continue
-            seen_pairs.add(key)
-            acc_src.append(s_i)
-            acc_dst.append(r_i)
+            if len(vids) > ACCESS_CAP:
+                idx = acc_rng.choice(len(vids), size=ACCESS_CAP, replace=False)
+                vids = [vids[i] for i in idx]
+            for vid in vids:
+                r_i = video_map.get(vid)
+                if r_i is None:
+                    continue
+                key = (s_i, r_i)
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                acc_src.append(s_i)
+                acc_dst.append(r_i)
 
         access_ei = torch.from_numpy(
             np.stack([np.array(acc_src), np.array(acc_dst)]).astype(np.int64)) \
@@ -488,6 +516,18 @@ class MOOCCubeLoader:
 
         # ── 12. Pack HeteroData ───────────────────────────────────────
         data = HeteroData()
+
+        # num_nodes must be set explicitly (as OULADLoader does) -- PyG's
+        # heuristic can't infer node count from this node type's attribute
+        # set ({x_struct, input_ids, attention_mask, x_behav}), so it
+        # silently returns None otherwise. Confirmed 2026-08-14: this
+        # breaks both data["student"].num_nodes lookups AND train_fast.py's
+        # "text-free" fast-cache path (line ~597), which does
+        # `_emb.expand(data[ntype].num_nodes, -1)` and crashes on None.
+        data["student"].num_nodes      = N_s
+        data["course"].num_nodes       = N_c
+        data["resource"].num_nodes     = N_r
+        data["instructor"].num_nodes   = 1
 
         data["student"].x_struct       = torch.from_numpy(x_struct)
         data["student"].x_behav        = torch.from_numpy(x_behav)
