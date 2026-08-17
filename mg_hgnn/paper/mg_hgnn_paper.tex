@@ -1036,6 +1036,27 @@ modality gate, these gaps directly quantify the
 contribution of relation-conditioned modal gating
 in isolation.
 
+For OULAD specifically, MG-HGNN's pooled AUC across
+15 runs ($0.8445 \pm 0.0293$) sits well above HGT's
+reported $0.797$: a one-sample $t$-test of the 15
+MG-HGNN runs against that point yields $t=6.06$,
+$p{<}0.001$, with a bootstrap 95\% CI on the mean gain
+of $[0.033, 0.062]$. We report this with an explicit
+caveat rather than as a clean significance result: HGT
+was evaluated on a single split (Table~\ref{tab:main_results}
+footnote), so it has no variance estimate of its own,
+and a one-sample test against an unreplicated point
+treats that point as exact, which likely overstates
+confidence relative to a proper two-sample comparison
+with a multi-seed HGT baseline. The 15 MG-HGNN runs are
+also not fully independent (3 seeds $\times$ 5-fold CV
+on one dataset), though Section~\ref{sec:experiments}'s
+finding that fold-to-fold variance dominates seed-to-seed
+variance suggests this is a secondary concern here. We
+therefore treat the direction and rough magnitude of the
+gap as well-supported, while stopping short of a formal
+significance claim until HGT is re-run with matched seeds.
+
 GAT achieves high single-split AUC on OULAD
 (0.883) and ASSIST-15 (0.975), but its high
 variance on ASSIST-09 ($\pm$0.303) reveals
