@@ -175,7 +175,7 @@ Network} that addresses this gap with a single,
 lightweight architectural addition. Each node maintains
 three \emph{separate} modality embeddings, produced by
 a multi-layer perceptron (structured), a frozen BERT
-encoder (textual), and a bidirectional LSTM (behavioural).
+encoder (textual), and a bidirectional GRU (behavioural).
 The core innovation is a per-edge-type \emph{modality
 gate}: for each relation type $r \in \mathcal{R}$, a
 dedicated linear layer $W_r$ learns a softmax weight
@@ -195,9 +195,12 @@ contributions:
   graphs: the empirical observation that different
   relation types carry different modal signals, which
   uniform HGNN fusion fails to exploit.
-  \item We propose MG-HGNN, which introduces the first
-  \emph{edge-type-conditioned} modality gate in
-  heterogeneous graph neural networks. Unlike concurrent
+  \item We propose MG-HGNN. To the best of our
+  knowledge, it is the first \emph{educational} HGNN
+  framework that explicitly conditions modality fusion
+  on heterogeneous edge relation types, enabling
+  modality preferences to vary by relational context
+  without manual specification. Unlike concurrent
   work on multi-modal HGNNs~\citep{bachiri2025mmhgnn},
   which weights modalities globally per node, MG-HGNN
   learns a separate softmax gate $W_r$ for each edge
@@ -218,10 +221,13 @@ contributions:
   differentiation compared to OULAD (full per-dataset
   heatmaps available in the supplementary repository at
   \url{https://github.com/shiv3589/mg_hgnn}).
-  \item We provide interpretable gate-weight analysis
-  showing the model autonomously discovers
-  educationally meaningful modal preferences without
-  supervision, and an ablation study confirming each
+  \item We provide gate-weight analysis: the gate
+  produces relation-conditioned weighting whose learned
+  coefficients can be inspected post-hoc. Whether these
+  coefficients reliably reflect modality informativeness
+  is an open question we examine empirically
+  (Section~\ref{sec:discussion}) rather than assume; we
+  also report an ablation study confirming each
   component's contribution.
 \end{enumerate}
 
@@ -336,9 +342,10 @@ differs fundamentally from the optimal mixture for an
 \textit{enrolled\_in} edge (where demographics and academic
 background dominate).
 
-MG-HGNN is, to our knowledge, the first GNN architecture to
-condition multi-modal feature fusion on the \emph{type of
-edge being traversed}, rather than applying a fixed or
+To the best of our knowledge, MG-HGNN is the first
+\emph{educational} HGNN framework that explicitly
+conditions modality fusion on heterogeneous edge
+relation types, rather than applying a fixed or
 globally-learned fusion strategy uniformly across all
 relations. This positions MG-HGNN as complementary to
 existing attention mechanisms in HGNNs: HGT's attention
@@ -398,8 +405,12 @@ same modal weighting regardless of relational context.
 MG-HGNN addresses this gap directly by conditioning
 the modality gate on the edge relation type, learning
 a separate weight matrix $W_r$ per relation $r
-\in \mathcal{R}$. This is the first mechanism of its
-kind in either general or educational HGNNs.
+\in \mathcal{R}$. To the best of our knowledge,
+MG-HGNN is the first \emph{educational} HGNN framework
+that explicitly conditions modality fusion on
+heterogeneous edge relation types, enabling modality
+preferences to vary by relational context without
+manual specification.
 
 \subsection{Gap Addressed by This Work}
 
@@ -607,7 +618,7 @@ $d$-dimensional embeddings:
     \overline{\text{BERT}}(\mathbf{X}_t^v)
     \in \mathbb{R}^d \label{eq:text-enc} \\
   \mathbf{h}_b^v &= W_{\text{proj}}^b \cdot
-    \text{BiLSTM}(\mathbf{X}_b^v)_{T}
+    \text{BiGRU}(\mathbf{X}_b^v)_{T}
     \in \mathbb{R}^d \label{eq:behav-enc}
 \end{align}
 where $\text{MLP}_s$ is a two-layer MLP with
@@ -615,7 +626,7 @@ LayerNorm and dropout; $\overline{\text{BERT}}$
 denotes mean-pooled last hidden states of frozen
 \texttt{bert-base-uncased}~\citep{devlin2019bert},
 built on the transformer~\citep{vaswani2017attention};
-and $\text{BiLSTM}(\cdot)_T$~\citep{hochreiter1997long}
+and $\text{BiGRU}(\cdot)_T$~\citep{cho2014gru}
 is the concatenated final forward and backward hidden
 states.
 All encoders project to the same embedding
@@ -713,7 +724,7 @@ $\mathbf{H}_t \leftarrow
   W_{\text{proj}} \mathbf{E}_t$
   \tcp*{text projection}\;
 $\mathbf{H}_b \leftarrow
-  W_{\text{proj}}^b\,\text{BiLSTM}(\mathbf{X}_b)_T$
+  W_{\text{proj}}^b\,\text{BiGRU}(\mathbf{X}_b)_T$
   \tcp*{behav encoder}\;
 \BlankLine
 \tcc{Relation-conditioned modality gating}
@@ -786,21 +797,23 @@ inference.}
   & \textbf{Params}
   & \textbf{Time (forward)} \\
 \midrule
-Struct encoder (2-layer MLP) & 24{,}832
+Struct encoder (2-layer MLP) & 50{,}048
   & $O(N_s\, d_s\, d)$ \\
-Text projection (BERT frozen) & 98{,}432
+Text projection (BERT frozen) & 98{,}688
   & $O(N_s)$ (cached) \\
-Behav encoder (BiLSTM) & 66{,}176
+Behav encoder (BiGRU) & 112{,}384
   & $O(N_s\, T\, d_b\, d)$ \\
+Instructor encoder (MLP) & 8{,}576
+  & $O(N_i\, d_s\, d)$ \\
 \textbf{Modality gate} ($|\mathcal{T}_e|{=}4$)
   & \textbf{4{,}620}
   & $O(|\mathcal{E}|\, d)$ \\
-HGTConv backbone (2 layers) & 678{,}073
+HGTConv backbone (2 layers) & 593{,}960
   & $O(|\mathcal{E}|\, d^2/H)$ \\
 Prediction heads (3 tasks) & 645
   & $O(N_s\, d)$ \\
 \midrule
-\textbf{Total trainable} & \textbf{872{,}778} & \\
+\textbf{Total trainable} & \textbf{868{,}921} & \\
 Gate share & 0.53\% & \\
 \bottomrule
 \end{tabular}
@@ -1808,9 +1821,9 @@ learnable modality gate that conditions multi-modal
 feature fusion on the edge relation type during
 message passing --- the first such mechanism in the
 educational HGNN literature. The gate adds only 0.53\%
-of trainable parameters yet enables the model to
-autonomously discover relation-specific modal
-preferences: structured features dominate
+of trainable parameters and produces a relation-specific
+weighting whose learned coefficients can be inspected:
+structured features dominate
 \textit{enrolled\_in} and \textit{collaborated\_with},
 while behavioural features lead for
 \textit{submitted\_to}, consistent with educational
@@ -2008,10 +2021,14 @@ Devlin, J., Chang, M.-W., Lee, K., \& Toutanova, K.
   transformers for language understanding.
 \newblock In \emph{NAACL}, pp.\ 4171--4186.
 
-\bibitem{hochreiter1997long}
-Hochreiter, S., \& Schmidhuber, J. (1997).
-\newblock Long short-term memory.
-\newblock \emph{Neural Computation}, 9(8), 1735--1780.
+\bibitem{cho2014gru}
+Cho, K., van Merrienboer, B., Gulcehre, C.,
+  Bahdanau, D., Bougares, F., Schwenk, H.,
+  \& Bengio, Y. (2014).
+\newblock Learning phrase representations using
+  {RNN} encoder--decoder for statistical machine
+  translation.
+\newblock In \emph{EMNLP}, pp.\ 1724--1734.
 
 % --- Multi-modal Fusion ---
 \bibitem{wei2019mmgcn}
