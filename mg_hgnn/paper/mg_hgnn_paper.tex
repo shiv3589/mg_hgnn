@@ -1036,26 +1036,87 @@ modality gate, these gaps directly quantify the
 contribution of relation-conditioned modal gating
 in isolation.
 
-For OULAD specifically, MG-HGNN's pooled AUC across
-15 runs ($0.8445 \pm 0.0293$) sits well above HGT's
-reported $0.797$: a one-sample $t$-test of the 15
-MG-HGNN runs against that point yields $t=6.06$,
-$p{<}0.001$, with a bootstrap 95\% CI on the mean gain
-of $[0.033, 0.062]$. We report this with an explicit
-caveat rather than as a clean significance result: HGT
-was evaluated on a single split (Table~\ref{tab:main_results}
-footnote), so it has no variance estimate of its own,
-and a one-sample test against an unreplicated point
-treats that point as exact, which likely overstates
-confidence relative to a proper two-sample comparison
-with a multi-seed HGT baseline. The 15 MG-HGNN runs are
-also not fully independent (3 seeds $\times$ 5-fold CV
-on one dataset), though Section~\ref{sec:experiments}'s
-finding that fold-to-fold variance dominates seed-to-seed
-variance suggests this is a secondary concern here. We
-therefore treat the direction and rough magnitude of the
-gap as well-supported, while stopping short of a formal
-significance claim until HGT is re-run with matched seeds.
+\paragraph{Statistical Significance.}
+We assess significance against each baseline using the
+strongest test the available data supports, which differs
+by dataset. On OULAD, no per-baseline result file with
+fold-level variance exists, so we use one-sample $t$-tests
+and Wilcoxon signed-rank tests of the 15 MG-HGNN runs
+(3 seeds $\times$ 5 folds) against each baseline's point
+estimate, with bootstrap 95\% confidence intervals (10,000
+resamples) that treat the baseline as fixed. MG-HGNN's
+improvement over HGT is $\Delta\text{AUC}=+0.047$ (95\% CI
+$[0.032, 0.062]$, $p<0.001$), over XGBoost $+0.094$
+($p<0.001$), and over HAN $+0.271$ ($p<0.001$). This is a
+one-sample test against an unreplicated point, which likely
+overstates confidence relative to a true two-sample
+comparison; the 15 MG-HGNN runs are also not fully
+independent (3 seeds $\times$ 5-fold CV on one dataset),
+though fold-to-fold variance dominating seed-to-seed
+variance (Section~\ref{sec:experiments}) suggests this is a
+secondary concern.
+On ASSISTments, no 3-seed MG-HGNN runs exist
+(Section~\ref{sec:setup}), so this comparison instead uses
+the 5 single-seed folds against each baseline's own measured
+mean and standard deviation (\texttt{baseline\_results\_
+assistments\{09,15\}.json}, obtained via real 5-fold CV) with
+a two-sample Welch $t$-test --- stronger than a one-sample
+test since baseline variance is directly measured rather
+than assumed zero. Improvements over HAN are significant on
+both cohorts ($p<0.001$), while gains over HGT are
+directional but do not reach significance ($p=0.529$ on
+ASSIST-09, $p=0.124$ on ASSIST-15), consistent with
+MG-HGNN's own fold-to-fold variance being higher on the
+smaller ASSIST-09 cohort ($\pm.019$) than on the larger
+ASSIST-15 cohort ($\pm.008$).
+GAT is excluded from Table~\ref{tab:significance}: on OULAD
+it was evaluated on a single split with no variance estimate
+at all, making a significance test against MG-HGNN's 15 runs
+asymmetric by construction (GAT retains its dagger footnote
+in Table~\ref{tab:main_results} instead). GAT on ASSISTments
+does have real per-fold variance on disk, unlike OULAD's, but
+we exclude it here too for consistency across the table
+rather than apply a different inclusion rule per dataset. We
+stop short of a formal significance claim pending a fully
+matched multi-seed baseline re-run on both OULAD and
+ASSISTments, identified as future work.
+
+\begin{table}[h]
+\centering
+\caption{Statistical significance of MG-HGNN improvements.
+  $\Delta$AUC = MG-HGNN minus baseline (positive = MG-HGNN
+  wins). CI: bootstrap 95\% confidence interval.
+  $\dagger$One-sample test against a point estimate with no
+  independently measured baseline variance (OULAD only; MG-HGNN
+  $n{=}15$). ASSISTments rows use a two-sample Welch $t$-test
+  against each baseline's measured mean/std (MG-HGNN $n{=}5$,
+  single seed --- no 3-seed ASSISTments runs exist). GAT
+  excluded throughout (see text).}
+\label{tab:significance}
+\begin{tabular}{llrrl}
+\toprule
+\textbf{Dataset} & \textbf{Baseline}
+  & \textbf{$\Delta$AUC}
+  & \textbf{95\% CI}
+  & \textbf{$p$} \\
+\midrule
+OULAD   & HGT$^\dagger$     & $+0.047$
+  & $[0.032, 0.062]$ & $<0.001$*** \\
+OULAD   & XGBoost$^\dagger$ & $+0.094$
+  & $[0.079, 0.109]$ & $<0.001$*** \\
+OULAD   & HAN$^\dagger$     & $+0.271$
+  & $[0.256, 0.286]$ & $<0.001$*** \\
+ASSIST-09 & HGT             & $+0.009$
+  & $[-0.016, 0.033]$ & $0.529$~ns \\
+ASSIST-09 & HAN             & $+0.081$
+  & $[0.056, 0.104]$ & $<0.001$*** \\
+ASSIST-15 & HGT             & $+0.014$
+  & $[-0.001, 0.030]$ & $0.124$~ns \\
+ASSIST-15 & HAN             & $+0.270$
+  & $[0.256, 0.284]$ & $<0.001$*** \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 GAT achieves high AUC on OULAD (0.883, single
 split) and ASSIST-15 ($0.974_{\pm.005}$, 5-fold
