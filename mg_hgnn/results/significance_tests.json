@@ -1,0 +1,122 @@
+[
+  {
+    "dataset": "OULAD",
+    "baseline": "HGT",
+    "method": "one_sample_vs_point",
+    "mg_n": 15,
+    "delta": 0.0475,
+    "ci_lo": 0.0322,
+    "ci_hi": 0.062,
+    "p_ttest": 3e-05,
+    "p_wilcoxon": 0.00012,
+    "sig": "***"
+  },
+  {
+    "dataset": "OULAD",
+    "baseline": "HAN",
+    "method": "one_sample_vs_point",
+    "mg_n": 15,
+    "delta": 0.2715,
+    "ci_lo": 0.2562,
+    "ci_hi": 0.286,
+    "p_ttest": 0.0,
+    "p_wilcoxon": 6e-05,
+    "sig": "***"
+  },
+  {
+    "dataset": "OULAD",
+    "baseline": "XGBoost",
+    "method": "one_sample_vs_point",
+    "mg_n": 15,
+    "delta": 0.0945,
+    "ci_lo": 0.0792,
+    "ci_hi": 0.109,
+    "p_ttest": 0.0,
+    "p_wilcoxon": 6e-05,
+    "sig": "***"
+  },
+  {
+    "dataset": "OULAD",
+    "baseline": "GAT",
+    "method": "one_sample_vs_point",
+    "mg_n": 15,
+    "delta": -0.0385,
+    "ci_lo": -0.0538,
+    "ci_hi": -0.024,
+    "p_ttest": 0.00023,
+    "p_wilcoxon": 0.00031,
+    "sig": "***"
+  },
+  {
+    "dataset": "ASSIST09",
+    "baseline": "GAT",
+    "method": "welch_two_sample_from_summary_stats",
+    "mg_n": 5,
+    "delta": 0.3128,
+    "ci_lo": 0.0507,
+    "ci_hi": 0.5775,
+    "p_ttest": 0.08189,
+    "p_wilcoxon": null,
+    "sig": "ns"
+  },
+  {
+    "dataset": "ASSIST09",
+    "baseline": "HGT",
+    "method": "welch_two_sample_from_summary_stats",
+    "mg_n": 5,
+    "delta": 0.0087,
+    "ci_lo": -0.0164,
+    "ci_hi": 0.0327,
+    "p_ttest": 0.52884,
+    "p_wilcoxon": null,
+    "sig": "ns"
+  },
+  {
+    "dataset": "ASSIST09",
+    "baseline": "HAN",
+    "method": "welch_two_sample_from_summary_stats",
+    "mg_n": 5,
+    "delta": 0.0808,
+    "ci_lo": 0.0562,
+    "ci_hi": 0.1043,
+    "p_ttest": 0.00025,
+    "p_wilcoxon": null,
+    "sig": "***"
+  },
+  {
+    "dataset": "ASSIST15",
+    "baseline": "GAT",
+    "method": "welch_two_sample_from_summary_stats",
+    "mg_n": 5,
+    "delta": -0.0241,
+    "ci_lo": -0.0316,
+    "ci_hi": -0.0152,
+    "p_ttest": 0.00134,
+    "p_wilcoxon": null,
+    "sig": "**"
+  },
+  {
+    "dataset": "ASSIST15",
+    "baseline": "HGT",
+    "method": "welch_two_sample_from_summary_stats",
+    "mg_n": 5,
+    "delta": 0.014,
+    "ci_lo": -0.0005,
+    "ci_hi": 0.0295,
+    "p_ttest": 0.12391,
+    "p_wilcoxon": null,
+    "sig": "ns"
+  },
+  {
+    "dataset": "ASSIST15",
+    "baseline": "HAN",
+    "method": "welch_two_sample_from_summary_stats",
+    "mg_n": 5,
+    "delta": 0.2695,
+    "ci_lo": 0.2557,
+    "ci_hi": 0.2843,
+    "p_ttest": 0.0,
+    "p_wilcoxon": null,
+    "sig": "***"
+  }
+]
