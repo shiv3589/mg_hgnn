@@ -93,9 +93,21 @@ MG-HGNN consistently outperforms the identical
 HGTConv backbone without gating across all settings,
 achieving AUC-ROC $0.8443 \pm 0.0292$,
 $0.867 \pm 0.019$, and $0.950 \pm 0.008$
-respectively. Gate-weight analysis across datasets
-confirms the mechanism adapts to actual modality
-informativeness without manual specification.
+respectively. We additionally deploy MG-HGNN
+(standalone, without re-running baselines) on
+MOOC-Cube, a large-scale Chinese MOOC platform with
+199,199 students and genuine per-course text, reaching
+AUC-ROC $0.9713 \pm 0.0096$ across 3 seeds $\times$
+5 folds. Gate-weight analysis across datasets shows
+the mechanism learns non-uniform, relation-specific
+modality preferences without manual specification;
+whether it responds to genuinely \emph{informative}
+text remains an open question, since the text signal
+available to the gate is a per-student placeholder
+on all four datasets evaluated, MOOC-Cube included ---
+real text on MOOC-Cube exists only at the course/video
+level, outside the gate's current student-centric
+scope.
 \end{abstract}
 
 \maketitle
@@ -823,6 +835,7 @@ RQ3 in the Ablation Study; and RQ4 via the Per-Fold
 Breakdown and the reproducibility analysis.
 
 \subsection{Experimental Setup}
+\label{sec:setup}
 We evaluate MG-HGNN on the Open University Learning
 Analytics Dataset (OULAD)~\citep{kuzilek2017open},
 which contains 28,785 students across 22 courses.
@@ -841,11 +854,13 @@ Results report mean~$\pm$~std across 5-fold CV
 averaged over 3 independent random seeds (seeds
 42, 123, 7; 15 runs total), stratified on
 the dropout label. Other public benchmarks in this
-space include EdNet~\citep{choi2020ednet} and
-MOOCCube~\citep{yu2020mooccube}; we focus on OULAD
-as the largest dataset with full demographic,
+space include EdNet~\citep{choi2020ednet}; we focus
+on OULAD as the primary dataset for baseline
+comparison, given its complete demographic,
 behavioral, and assessment records for joint
-multi-task evaluation.
+multi-task evaluation. We separately evaluate MG-HGNN
+on MOOCCube~\citep{yu2020mooccube} below to test the
+gate under genuine multi-modal text conditions.
 
 To assess generalisability beyond OULAD, we additionally
 evaluate on two ASSISTments datasets from the ASSISTments
@@ -864,6 +879,48 @@ dropout as fewer than 10 total attempts (binary),
 and engagement as a tertile of distinct problems attempted
 (classes 0--2). Results on ASSISTments are reported as
 mean~$\pm$~std over 5-fold CV on the dropout label.
+
+\textbf{MOOC-Cube.} To test the gate under conditions
+where text carries genuine information, we additionally
+evaluate on MOOC-Cube~\citep{yu2020mooccube}, a
+large-scale Chinese MOOC dataset with 199,199 students
+and 34,101 videos. Unlike OULAD and ASSISTments,
+MOOC-Cube course records contain real text (title,
+prerequisites, and about-page copy), encoded with a
+Chinese BERT model (\texttt{bert-base-chinese}) rather
+than placeholder \texttt{[CLS]} stubs. The official
+release contains no ground-truth performance labels
+and, unlike the related MOOCCubeX/MOOC-Radar releases,
+no problem/exercise entity; we therefore derive grade,
+dropout, and engagement labels as proxies from
+per-video watch-time and progress records in
+\texttt{user\_video\_act.json}, the only file in the
+release with genuine timing data (exact formulas are
+documented in the loader source and supplementary
+repository). Because there is no problem entity, the
+\textit{submitted\_to} relation is honestly empty
+(0 edges) on MOOC-Cube rather than imputed --- a
+structural difference from OULAD and ASSISTments,
+where this relation is populated from real submission
+records. The \textit{collaborated\_with} and
+\textit{accessed} relations are subsampled for
+tractability (a per-course cap of 300 co-enrolled
+students before an ${\geq}2$-shared-course filter, and
+a per-student cap of 100 accessed videos, respectively),
+reducing \textit{collaborated\_with} to 238,088 edges
+and \textit{accessed} to 6,621,036 edges. As on OULAD,
+the dropout proxy (mean completion rate $=0$) has a
+natural positive-rate floor of 75.6\%, since any
+stricter completion-rate threshold can only enlarge,
+never shrink, this group. Full end-to-end training on
+a graph this size exceeded available CPU RAM
+(Section~\ref{sec:scalability}); MOOC-Cube results
+were therefore obtained on a single GPU instance
+(NVIDIA T4, 16GB) rather than the CPU-only setup used
+for OULAD and ASSISTments. Baselines (XGBoost, GAT,
+HAN, HGT) have not yet been re-run on MOOC-Cube, so
+Section~\ref{sec:moocc} reports MG-HGNN only, not a
+backbone-ablation comparison.
 
 \begin{table}[t]
 \centering
@@ -1082,6 +1139,89 @@ uncertainty by roughly a factor of two.
   \label{fig:auc_curves}
 \end{figure}
 
+\subsection{MOOC-Cube Results}
+\label{sec:moocc}
+
+Table~\ref{tab:moocc_perfold} reports MG-HGNN's
+performance on MOOC-Cube, broken down by all 15 runs
+(3 seeds $\times$ 5 folds), using the same GPU setup
+described in Section~\ref{sec:setup}. Pooled AUC-ROC
+is $0.9713 \pm 0.0096$, RMSE (grade regression) is
+$0.3325 \pm 0.0088$, and engagement F1 is
+$0.6421 \pm 0.0592$. These numbers are substantially
+higher than OULAD's pooled AUC ($0.8443 \pm 0.0292$),
+but we caution against reading this gap as evidence
+that real text improves prediction: MOOC-Cube's dropout
+label is itself derived from the same per-video
+watch-time signal that feeds the behavioral encoder
+(Section~\ref{sec:setup}), so part of this gap plausibly
+reflects proxy-label/feature closeness rather than a
+clean methodological improvement. Unlike the OULAD,
+A09, and A15 comparisons in Table~\ref{tab:main_results},
+no baselines (XGBoost, GAT, HAN, HGT) have been re-run
+on MOOC-Cube, so this table demonstrates that MG-HGNN
+trains successfully end-to-end on a real, large-scale,
+genuinely multi-modal graph --- not that it outperforms
+alternative architectures on this dataset specifically.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Per-fold results for MG-HGNN on MOOC-Cube
+         across 3 independent random seeds (42, 123,
+         7; 15 runs total). No baseline models have
+         been evaluated on this dataset.}
+\label{tab:moocc_perfold}
+\begin{tabular}{llccc}
+\toprule
+\textbf{Seed} & \textbf{Fold}
+  & \textbf{RMSE} $\downarrow$
+  & \textbf{AUC-ROC} $\uparrow$
+  & \textbf{Eng-F1} $\uparrow$ \\
+\midrule
+42  & Fold 1 & 0.3371 & 0.9662 & 0.6819 \\
+42  & Fold 2 & 0.3320 & 0.9845 & 0.6817 \\
+42  & Fold 3 & 0.3346 & 0.9821 & 0.6579 \\
+42  & Fold 4 & 0.3391 & 0.9749 & 0.5372 \\
+42  & Fold 5 & 0.3419 & 0.9621 & 0.5687 \\
+\midrule
+123 & Fold 1 & 0.3339 & 0.9843 & 0.7038 \\
+123 & Fold 2 & 0.3393 & 0.9733 & 0.5002 \\
+123 & Fold 3 & 0.3339 & 0.9771 & 0.6622 \\
+123 & Fold 4 & 0.3342 & 0.9729 & 0.6571 \\
+123 & Fold 5 & 0.3341 & 0.9499 & 0.6586 \\
+\midrule
+7   & Fold 1 & 0.3361 & 0.9629 & 0.6375 \\
+7   & Fold 2 & 0.3151 & 0.9767 & 0.6929 \\
+7   & Fold 3 & 0.3392 & 0.9672 & 0.6135 \\
+7   & Fold 4 & 0.3087 & 0.9763 & 0.6814 \\
+7   & Fold 5 & 0.3290 & 0.9588 & 0.6961 \\
+\midrule
+\multicolumn{2}{l}{\textbf{Pooled Mean (15 runs)}}
+              & \textbf{0.3325} & \textbf{0.9713}
+              & \textbf{0.6421} \\
+\multicolumn{2}{l}{\textbf{Pooled Std}}
+              & 0.0088          & 0.0096
+              & 0.0592          \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Checkpoint filenames in this training run
+(\texttt{fold\_\{k\}\_fast\_best.pt}) are not tagged
+by seed or dataset, so sequential multi-seed runs
+overwrite each other's saved checkpoints; only the
+last-run seed's (seed~7) five fold checkpoints survive
+on disk. This does not affect the metrics in
+Table~\ref{tab:moocc_perfold}, which are logged
+per-fold during training before any overwrite occurs,
+but it does limit which specific checkpoint is
+available for the post-hoc gate-weight analysis in
+Section~\ref{sec:gate}. We flag this as an
+infrastructure gap to fix (seed- and dataset-tagged
+checkpoint paths) before further checkpoint-dependent
+analyses are run.
+
 \subsection{Gate Weight Analysis (RQ2)}
 \label{sec:gate}
 
@@ -1228,6 +1368,76 @@ matching or exceeding fixed-gate baselines, but the
 gate's interpretability as an informativeness
 detector should be treated as an open question rather
 than an established finding.
+
+\textbf{MOOC-Cube gate weights.} Table~\ref{tab:moocc_gate}
+reports gate weights on MOOC-Cube, computed the same
+way as Table~\ref{tab:gate_weights}, from the surviving
+fold-3, seed-7 checkpoint (AUC $0.9763$; per the
+checkpoint-overwrite issue noted in
+Section~\ref{sec:moocc}, this is a substitute for the
+originally intended best-fold checkpoint, which no
+longer exists on disk).
+
+\begin{table}[t]
+\centering
+\caption{Learned modality gate weights
+$\boldsymbol{\alpha}^{(r)}$ per edge relation type on
+MOOC-Cube, from the seed-7/fold-3 checkpoint (AUC
+$0.9763$). Each row sums to 1.0 (rounding).
+\textsuperscript{$\dagger$}\textit{submitted\_to} has
+0 edges on MOOC-Cube (Section~\ref{sec:setup}); its
+gate parameters received no training signal and this
+row should not be interpreted.}
+\label{tab:moocc_gate}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Relation}
+  & \textbf{Struct.} $\alpha_s$
+  & \textbf{Text} $\alpha_t$
+  & \textbf{Behav.} $\alpha_b$ \\
+\midrule
+\textit{enrolled\_in}       & 0.340 & 0.249 & \textbf{0.411} \\
+\textit{collaborated\_with} & \textbf{0.399} & 0.338 & 0.264 \\
+\textit{accessed}           & \textbf{0.394} & 0.378 & 0.228 \\
+\textit{submitted\_to}$^\dagger$ & 0.214 & 0.408 & 0.378 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Comparing text weight $\alpha_t$ against the OULAD
+values in Table~\ref{tab:gate_weights}, the pattern is
+mixed rather than uniformly higher: \textit{accessed}
+falls (0.378 vs.\ 0.41), \textit{enrolled\_in} falls
+slightly (0.249 vs.\ 0.27), and \textit{collaborated\_with}
+rises slightly (0.338 vs.\ 0.31); only
+\textit{submitted\_to} rises substantially (0.408 vs.\
+0.31), and that relation's weights are uninterpretable
+for the reason given in the table caption.
+
+Critically, this comparison does \emph{not} answer the
+question posed in Section~\ref{sec:discussion}: the
+gate computed here operates on \emph{student}-level
+modality embeddings ($h_s, h_t, h_b$ for each student
+node), and MOOC-Cube's per-student text field is a
+constant \texttt{[CLS]}-only stub, structurally
+identical to OULAD's placeholder --- MOOC-Cube's real
+Chinese-language text (course descriptions, video
+titles) exists only on \emph{course} and \emph{video}
+nodes, which are not the nodes gated in this analysis.
+The text signal available to the gate in
+Table~\ref{tab:moocc_gate} is therefore just as
+uninformative as in Table~\ref{tab:gate_weights}, and
+the small shifts observed most likely reflect
+checkpoint-specific noise (recall fold-to-fold std up
+to $\pm 0.15$ on OULAD) rather than the gate detecting
+real text content. A decisive test of whether the gate
+responds to genuine text informativeness requires
+extending the analysis to course- or resource-level
+gate weights, where MOOC-Cube's real text actually
+enters the model --- we identify this as the concrete,
+correctly-scoped next step, superseding the
+MOOC-Cube-as-resolution framing in the original
+submission.
 
 \subsection{Ablation Study (RQ3)}
 \label{sec:ablation}
@@ -1468,7 +1678,8 @@ confirms that even a single globally learned mixture
 but not to individual relation types --- fails to
 recover this performance.
 
-\subsection{OULAD as a Stress Test for Text Modality}
+\subsection{OULAD and MOOC-Cube as Stress Tests for
+Text Modality}
 
 An important caveat of our evaluation is that OULAD
 contains no student-authored text: the student-level
@@ -1493,18 +1704,30 @@ the current gate design on OULAD: $\alpha_t$
 magnitude on this dataset should not be read as an
 interpretability signal for text usefulness.
 
-This motivates evaluation on a dataset with rich,
-per-student text --- such as
-MOOC-Cube~\citep{yu2020mooccube}, which includes
-course video transcripts and learner forum posts ---
-where the gate's behaviour when text genuinely
-carries information, versus when it structurally
-cannot, can be directly compared. We flag this as a
-necessary follow-up before treating gate weight
+This motivated evaluation on a dataset with rich text
+content, such as MOOC-Cube~\citep{yu2020mooccube}. We
+have since run that follow-up
+(Section~\ref{sec:moocc}), and it does \emph{not}
+resolve the question: MOOC-Cube's real text lives on
+course and video nodes, but the gate --- in both this
+paper's original formulation and the evaluation just
+run --- operates on \emph{student}-level modality
+embeddings, and MOOC-Cube's per-student text field is
+exactly as uninformative a placeholder as OULAD's
+(Table~\ref{tab:moocc_gate}). The originally proposed
+test was mis-scoped: swapping datasets was not
+sufficient, because the placeholder-text problem is a
+property of which node type the gate is applied to,
+not of which dataset supplies the surrounding graph.
+A genuine test requires extending gate computation to
+course- or resource-level embeddings, where real text
+actually enters the model on MOOC-Cube. We flag this
+as the necessary follow-up before treating gate weight
 magnitude as an interpretability signal in deployed
 settings.
 
 \subsection{Scalability Considerations}
+\label{sec:scalability}
 
 The primary scalability bottleneck of MG-HGNN in
 its current form is the HGTConv message passing,
@@ -1537,6 +1760,41 @@ improve as the GNN backbone improves --- a benefit
 that the cache protocol trades away. Future work
 should explore asynchronous cache refreshes every
 $k$ epochs as a middle ground.
+
+\textbf{Empirical findings from scaling to MOOC-Cube.}
+Attempting to train MG-HGNN on MOOC-Cube's 199,199-student
+graph surfaced two concrete scalability failure modes not
+visible at OULAD's scale (28,785 students). First, the
+full-graph, single-batch encoder used for OULAD triggered
+kernel OOM kills on a 32GB CPU instance even after edge
+subsampling (Section~\ref{sec:setup}); this was the
+proximate reason for moving MOOC-Cube training to a GPU
+instance rather than a CPU one. Second, and more
+specifically, the bottleneck was not primarily the edge
+count but the behavioral encoder: a bidirectional 2-layer
+GRU invoked unbatched over all 199,199 student sequences
+allocates its raw output tensor at
+$N \times T \times d \approx 199{,}199 \times 50 \times 128$
+elements ($\approx$5.1GB in float32 alone, before GRU
+internal state), which we confirmed via \texttt{dmesg}
+and step-by-step RSS instrumentation was the actual crash
+point --- not, as we first hypothesised, the graph
+construction step. Mini-batching this single call
+(batch size 8,192) resolved it without any change to
+model semantics. We record this because it generalises
+beyond MOOC-Cube: any dataset with student sequence
+counts in this range will hit the same GRU-memory wall
+regardless of edge count, and the fix is a few lines of
+batching, not an architecture change. We note this
+GPU migration changed only tensor placement, not the
+per-fold training schedule: as on OULAD, the graph
+encoder (including the gate) is still fit once per fold
+before the head-only epoch loop runs on cached
+embeddings (Section~\ref{sec:method}); moving to GPU
+resolved the memory ceiling but did not, by itself,
+enable the full end-to-end joint optimisation of
+encoders, gate, and heads that earlier drafts of this
+paper speculated GPU access would provide.
 
 % ============================================================
 %  7. CONCLUSION
@@ -1584,39 +1842,59 @@ learned gate's benefit on OULAD is not uniformly
 positive across metrics (Section~\ref{sec:ablation}).
 
 \textbf{Limitations.}
-OULAD lacks real textual content, meaning the text
-encoder operates on placeholder embeddings for this
-dataset; the full benefit of BERT-encoded course
-descriptions and discussion posts remains to be
-demonstrated on a dataset such as MOOC-Cube.
-Additionally, the current graph encoder is updated
-only once per fold due to CPU memory constraints;
-GPU training would allow full end-to-end joint
-optimisation of encoders, gate, and heads.
-Additionally, gate weight differentiation shows
-substantial fold-to-fold variance on OULAD
-(std $\leq 0.15$), and the text modality carries no
-real signal on any of the three evaluated datasets.
-Evaluation on MOOC-Cube, where genuine course
-descriptions and video titles are available, is
-necessary to validate the full three-modality gate
-mechanism and is the immediate next step.
+We have since evaluated MG-HGNN on MOOC-Cube
+(Section~\ref{sec:moocc}), which does carry real
+per-course text, reaching AUC-ROC
+$0.9713 \pm 0.0096$; however, this does not resolve
+the text-modality limitation as originally framed.
+The gate operates on \emph{student}-level embeddings,
+and MOOC-Cube's per-student text field is a placeholder
+stub exactly like OULAD's --- MOOC-Cube's real text
+lives on course and video nodes, outside the gate's
+current scope (Section~\ref{sec:gate}). No baselines
+have yet been re-run on MOOC-Cube, so the AUC gap over
+OULAD should not be read as a clean win: MOOC-Cube's
+labels are proxies derived from the same watch-time
+signal that feeds the behavioral encoder, which
+plausibly inflates the gap through feature/label
+closeness rather than genuine multi-modal advantage.
+The current graph encoder is still updated only once
+per fold, before the head-only epoch loop; moving
+MOOC-Cube training to a GPU instance fixed a real
+memory ceiling (Section~\ref{sec:scalability}) but did
+not change this schedule, so full end-to-end joint
+optimisation of encoders, gate, and heads remains
+future work, not something GPU access alone provided.
+Gate weight differentiation also continues to show
+substantial fold-to-fold variance (std $\leq 0.15$ on
+OULAD), and MOOC-Cube's \textit{submitted\_to}
+relation has zero edges (no problem/exercise entity
+exists in the official release), so that relation's
+gate weights are uninterpretable on this dataset.
+Finally, MOOC-Cube checkpoints are not tagged by seed
+or dataset, so only one seed's fold checkpoints survive
+sequential multi-seed runs --- an infrastructure gap,
+not a modeling one, but one that constrained which
+checkpoint the gate-weight analysis in
+Section~\ref{sec:gate} could use.
 
 \textbf{Future work.}
-Three directions are most promising. First, evaluating
-MG-HGNN on MOOC-Cube~\citep{yu2020mooccube}, where
-real course and resource text activates the BERT
-encoder, will establish
-whether the text modality provides additional signal
-beyond structured and behavioural features. Second,
-extending the gate to condition on both edge type
-\emph{and} edge features (e.g., submission content)
-would push toward fully multi-modal relational
-reasoning. Third, applying the modality-gating
-principle to federated settings --- where student data
-cannot be centralised across institutions --- represents
-a high-impact research direction for privacy-preserving
-educational analytics.
+Three directions are most promising. First, extending
+gate computation to course- or resource-level
+embeddings on MOOC-Cube, where real text actually
+enters the model, is now the concrete next step for
+testing whether the gate responds to genuine text
+informativeness --- superseding the original framing,
+which assumed evaluating on a text-rich \emph{dataset}
+was sufficient regardless of which node type the gate
+is applied to. Second, extending the gate to condition
+on both edge type \emph{and} edge features (e.g.,
+submission content) would push toward fully multi-modal
+relational reasoning. Third, applying the
+modality-gating principle to federated settings ---
+where student data cannot be centralised across
+institutions --- represents a high-impact research
+direction for privacy-preserving educational analytics.
 
 % ============================================================
 %  REFERENCES

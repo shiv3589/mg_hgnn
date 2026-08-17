@@ -6,10 +6,11 @@
     7
   ],
   "n_runs": 15,
-  "auc_mean": 0.9749,
-  "auc_std": 0.0108,
-  "f1_mean": 0.6739,
-  "f1_std": 0.0247,
+  "auc_mean": 0.9713,
+  "auc_std": 0.0096,
+  "f1_mean": 0.6421,
+  "f1_std": 0.0592,
   "rmse_mean": 0.3325,
-  "rmse_std": 0.0088
+  "rmse_std": 0.0088,
+  "_note": "Recomputed 2026-08-17 directly from best_metrics in results/training_history_moocc_seed{42,123,7}.json (population std, matching the paper's OULAD-table convention). The auc_mean/f1_mean in the original version of this file (0.9749/0.6739) did not match a direct recomputation from the same source data and have been corrected; rmse_mean/rmse_std were already correct."
 }
