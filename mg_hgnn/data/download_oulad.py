@@ -3,7 +3,7 @@ import requests
 import zipfile
 import pathlib
 
-OULAD_URL = "https://analyse.kmi.open.ac.uk/open-dataset/download"
+OULAD_URL = "http://schools.stem.open.ac.uk/cdn/files/anonymisedData.zip"
 SAVE_DIR  = pathlib.Path("data/raw/oulad")
 
 
