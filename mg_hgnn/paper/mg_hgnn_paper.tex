@@ -168,7 +168,14 @@ same student's discussion posts and assignment text are
 more relevant when propagating through a
 \textit{collaborated-with} edge. Uniform modality fusion
 across all edge types conflates these distinct signals
-and limits model expressiveness.
+and limits model expressiveness. Recent
+work~\citep{yu2026ustga} demonstrates
+the value of jointly modelling spatial and
+temporal student dependencies; however,
+homogeneous graph approaches do not capture
+the typed relational structure --- enrolment,
+access, and collaboration --- that distinguishes
+educational heterogeneous graphs.
 
 \textbf{This paper proposes MG-HGNN}, a
 \textit{Modality-Gated Heterogeneous Graph Neural
@@ -312,6 +319,22 @@ benchmarks \citep{zhang2025gnttinet}. Shared limitations include high
 computational cost on large cohorts and limited cross-institutional
 generalizability \citep{huang2024dual, li2022studygnn, zhang2025gnttinet,
 huang2024temporal, yang2024hypergraph, balachandar2024mspp}.
+
+Most recently, \citet{yu2026ustga} propose a
+unified spatial-temporal graph aggregation (USTGA)
+framework that embeds Pearson-correlation spatial
+similarity directly into temporal adjacency
+modeling for student performance prediction.
+While USTGA demonstrates strong performance on
+grade regression, it operates on a homogeneous
+student graph with a single unified adjacency
+matrix, without distinguishing the semantically
+distinct edge relation types --- enrolment,
+resource access, and peer collaboration ---
+that characterise heterogeneous learning
+management systems. MG-HGNN addresses this
+gap by conditioning modality fusion explicitly
+on edge relation type in a heterogeneous graph.
 
 \subsection{Gating and Modality Weighting in Graph Neural Networks}
 
@@ -2077,6 +2100,12 @@ modality-gating principle to federated settings ---
 where student data cannot be centralised across
 institutions --- represents a high-impact research
 direction for privacy-preserving educational analytics.
+USTGA~\citep{yu2026ustga} demonstrates that
+explicit temporal adjacency across academic
+presentations improves robustness under
+feature noise; incorporating such temporal
+structure into MG-HGNN's heterogeneous graph
+is a natural direction for future work.
 
 % ============================================================
 %  REFERENCES
@@ -2322,6 +2351,13 @@ Bachiri, K., Yahyaouy, A., Malek, M., \& Rogovschi, N.
 \newblock \emph{International Journal of Computational
   Intelligence Systems}, 18, 178.
 \newblock \url{https://doi.org/10.1007/s44196-025-00820-9}
+
+\bibitem[Yu and Zhou(2026)]{yu2026ustga}
+Yu, X., \& Zhou, Y. (2026).
+\newblock Unified spatial-temporal graph aggregation
+  framework for predicting student performance.
+\newblock \emph{Scientific Reports}, 16, 17414.
+\newblock \url{https://doi.org/10.1038/s41598-026-48182-2}
 
 \end{thebibliography}
 
