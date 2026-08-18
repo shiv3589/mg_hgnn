@@ -16,6 +16,7 @@ Gating for Student Performance Prediction in
 Heterogeneous Graphs}}
 \usepackage{algorithm2e}
 \usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
 \usepackage{lipsum}
 
 % ---- ACM Metadata ----
@@ -607,6 +608,91 @@ Figure~\ref{fig:gate_heatmap} (Section~\ref{sec:experiments})
 illustrates the learned gate weights after training;
 the architecture is described formally in
 Equation~\ref{eq:gate} above.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=0.5cm and 0.6cm,
+  font=\small,
+  box/.style={
+    rectangle, rounded corners=4pt,
+    minimum width=2.6cm, minimum height=0.8cm,
+    draw, align=center, inner sep=4pt},
+  encoder/.style={box, minimum width=2.0cm, fill=teal!15},
+  gate/.style={box, fill=orange!20,
+    minimum width=6.8cm, minimum height=1.0cm},
+  hgt/.style={box, fill=gray!12, minimum width=9cm},
+  head/.style={box, minimum width=2.4cm, minimum height=0.8cm},
+  arr/.style={-{Stealth[length=4pt]}, gray, line width=0.6pt},
+]
+
+%% Row 0 -- student's three modality encoders
+\node[encoder]                               (mlp)  {MLP\\{\tiny struct $\to \mathbf{h}_s$}};
+\node[encoder, fill=orange!8, right=of mlp]  (bert) {BERT (frozen)\\{\tiny text $\to \mathbf{h}_t$}};
+\node[encoder, fill=red!10,   right=of bert] (gru)  {BiGRU\\{\tiny behav $\to \mathbf{h}_b$}};
+
+%% Row 1 -- gate (student's three streams only)
+\node[gate, below=0.7cm of bert,
+  label={[font=\scriptsize,gray]above:\emph{core contribution}}]
+  (gate) {Relation-conditioned modality gate\\
+   {\small $\boldsymbol{\alpha}^{(r)} = \mathrm{softmax}\big(W_r\,
+   [\mathbf{h}_s\|\mathbf{h}_t\|\mathbf{h}_b]\big)$,
+   one $W_r$ per edge relation type $r$}};
+
+%% Row 2 -- other node types, encoded directly (no gating)
+\node[box, fill=purple!12, below=0.9cm of gate, xshift=-4.2cm]
+  (cr)  {Course / Resource\\{\tiny BERT text, direct}};
+\node[box, fill=blue!8, below=0.9cm of gate, xshift=4.2cm]
+  (ist) {Instructor\\{\tiny MLP struct, direct}};
+
+%% Row 3 -- HGTConv over all node types
+\node[hgt, below=1.8cm of gate] (hgt)
+  {HGTConv message passing $\times$ 2 layers\\
+   {\scriptsize heterogeneous aggregation over
+   \textit{enrolled\_in}, \textit{collaborated\_with},
+   \textit{accessed}, \textit{submitted\_to}}};
+
+%% Row 4 -- student embedding
+\node[box, fill=gray!8, below=0.5cm of hgt, minimum width=4cm]
+  (emb) {Student embedding $\mathbf{z}\in\mathbb{R}^d$};
+
+%% Row 5 -- prediction heads
+\node[head, fill=teal!15, below left=0.7cm and 1.5cm of emb]
+  (gh) {Grade\\{\tiny regression}};
+\node[head, fill=purple!10, below=0.7cm of emb]
+  (dh) {Dropout\\{\tiny binary BCE}};
+\node[head, fill=red!10, below right=0.7cm and 1.5cm of emb]
+  (eh) {Engagement\\{\tiny 3-class CE}};
+
+%% Arrows
+\draw[arr] (mlp)  -- (gate.north west);
+\draw[arr] (bert) -- (gate);
+\draw[arr] (gru)  -- (gate.north east);
+
+\draw[arr] (gate) -- (hgt);
+\draw[arr] (cr)   |- (hgt.west);
+\draw[arr] (ist)  |- (hgt.east);
+
+\draw[arr] (hgt) -- (emb);
+\draw[arr] (emb) -- (gh);
+\draw[arr] (emb) -- (dh);
+\draw[arr] (emb) -- (eh);
+
+\end{tikzpicture}
+\caption{MG-HGNN architecture. Student nodes carry three modality
+streams --- structured (MLP), text (frozen BERT; a per-student
+placeholder on every evaluated dataset except MOOC-Cube
+course/video text), and behavioural (BiGRU) --- fused by a
+relation-conditioned gate $\boldsymbol{\alpha}^{(r)}$: a separate
+softmax over $[\mathbf{h}_s, \mathbf{h}_t, \mathbf{h}_b]$ learned
+per edge relation type $r$ (Equation~\ref{eq:gate}). Course and
+resource nodes reuse the same frozen BERT projection directly,
+without gating; instructor nodes use a separate MLP, also
+ungated. All four node-type embeddings are propagated through
+two HGTConv layers; three prediction heads output grade, dropout,
+and engagement predictions from the resulting student embedding.}
+\label{fig:architecture}
+\end{figure*}
 
 \textbf{Modality encoders.}
 Each student node $v$ is encoded into three
